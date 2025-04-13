@@ -8,8 +8,13 @@ import {
   CardTitle,
 } from "@/components/ui/card";
 import { createFileRoute } from "@tanstack/react-router";
-import { AlertCircle, CheckCircle2, MessageSquare } from "lucide-react";
-import { useEffect, useState } from "react";
+import {
+  AlertCircle,
+  CheckCircle2,
+  Loader2,
+  MessageSquare,
+} from "lucide-react";
+import { useEffect, useRef, useState } from "react";
 
 export const Route = createFileRoute("/")({
   component: Index,
@@ -19,26 +24,52 @@ function Index() {
   const [status, setStatus] = useState<{
     qrCode: string | null;
     isConnected: boolean;
+    connectionState: "loading" | "ready" | "disconnected" | "error";
   }>({
     qrCode: null,
     isConnected: false,
+    connectionState: "disconnected",
   });
+  const intervalRef = useRef<number | null>(null);
 
   useEffect(() => {
     const fetchStatus = async () => {
       try {
+        // Skip fetching if we already have a QR code and there's no error
+        if (status.qrCode && status.connectionState !== "error") {
+          return;
+        }
+
         const response = await fetch("http://localhost:3000/whatsapp/connect");
         const data = await response.json();
         setStatus(data);
       } catch (error) {
         console.error("Error fetching WhatsApp status:", error);
+        setStatus((prev) => ({ ...prev, connectionState: "error" }));
       }
     };
 
     fetchStatus();
-    const interval = setInterval(fetchStatus, 5000);
-    return () => clearInterval(interval);
-  }, []);
+
+    // Clear existing interval if any
+    if (intervalRef.current) {
+      clearInterval(intervalRef.current);
+    }
+
+    // Only set interval if we don't have QR code or there's an error
+    if (!status.qrCode || status.connectionState === "error") {
+      intervalRef.current = window.setInterval(
+        fetchStatus,
+        5000
+      ) as unknown as number;
+    }
+
+    return () => {
+      if (intervalRef.current) {
+        clearInterval(intervalRef.current);
+      }
+    };
+  }, [status.qrCode, status.connectionState]);
 
   return (
     <main className="flex min-h-screen flex-col items-center justify-center p-4 bg-white">
@@ -69,31 +100,58 @@ function Index() {
                 manage your contacts.
               </AlertDescription>
             </Alert>
+          ) : status.connectionState === "loading" ? (
+            <Alert className="mb-4 bg-blue-50 border-blue-200">
+              <Loader2 className="h-4 w-4 animate-spin text-blue-500" />
+              <AlertTitle>Connecting...</AlertTitle>
+              <AlertDescription>
+                Please wait while we establish a connection to WhatsApp.
+              </AlertDescription>
+            </Alert>
+          ) : status.connectionState === "error" ? (
+            <Alert className="mb-4 bg-red-50 border-red-200">
+              <AlertCircle className="h-4 w-4 text-red-500" />
+              <AlertTitle>Connection Error</AlertTitle>
+              <AlertDescription>
+                An error occurred while connecting to WhatsApp. Please try
+                again.
+              </AlertDescription>
+            </Alert>
           ) : (
-            <>
-              <Alert className="mb-4">
-                <AlertCircle className="h-4 w-4" />
-                <AlertTitle>Scan QR Code</AlertTitle>
-                <AlertDescription>
-                  Please scan the QR code with your WhatsApp to connect.
-                </AlertDescription>
-              </Alert>
-
-              <div className="relative mb-6">
-                <div className="w-64 h-64 border-2 border-gray-300 rounded-lg flex items-center justify-center bg-white">
-                  {status.qrCode ? (
-                    <img
-                      src={`https://api.qrserver.com/v1/create-qr-code/?size=240x240&data=${encodeURIComponent(status.qrCode)}`}
-                      alt="WhatsApp QR Code"
-                      className="w-full h-full p-2"
-                    />
-                  ) : (
-                    <div className="text-gray-400">Loading QR code...</div>
-                  )}
-                </div>
-              </div>
-            </>
+            <Alert className="mb-4">
+              <AlertCircle className="h-4 w-4" />
+              <AlertTitle>Scan QR Code</AlertTitle>
+              <AlertDescription>
+                Please scan the QR code with your WhatsApp to connect.
+              </AlertDescription>
+            </Alert>
           )}
+
+          <div className="relative mb-6">
+            <div className="w-64 h-64 border-2 border-gray-300 rounded-lg flex items-center justify-center bg-white">
+              {status.connectionState === "loading" || !status.qrCode ? (
+                <div className="flex flex-col items-center space-y-2">
+                  <Loader2 className="h-8 w-8 animate-spin text-green-500" />
+                  <p className="text-sm text-gray-500">
+                    {status.connectionState === "loading"
+                      ? "Initializing WhatsApp..."
+                      : "Loading QR code..."}
+                  </p>
+                </div>
+              ) : status.qrCode ? (
+                <img
+                  src={`https://api.qrserver.com/v1/create-qr-code/?size=240x240&data=${encodeURIComponent(status.qrCode)}`}
+                  alt="WhatsApp QR Code"
+                  className="w-full h-full p-2"
+                />
+              ) : (
+                <div className="flex flex-col items-center space-y-2">
+                  <Loader2 className="h-8 w-8 animate-spin text-green-500" />
+                  <p className="text-sm text-gray-500">Loading QR code...</p>
+                </div>
+              )}
+            </div>
+          </div>
 
           <div className="text-sm text-gray-600 space-y-4 w-full">
             <p className="font-medium">By connecting, you consent to:</p>

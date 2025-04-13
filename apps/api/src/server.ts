@@ -20,9 +20,6 @@ export const createServer = (): Express => {
         credentials: true,
       })
     )
-    .get("/message/:name", (req, res) => {
-      return res.json({ message: `hello ${req.params.name}` });
-    })
     .get("/status", async (_, res) => {
       try {
         // Test database connection

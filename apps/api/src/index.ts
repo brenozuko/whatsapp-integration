@@ -1,8 +1,12 @@
 import { log } from "@repo/logger";
 import { createServer } from "./server";
-import { getQrCode, initializeWhatsApp } from "./services/whatsapp";
+import {
+  getConnectionState,
+  getQrCode,
+  initializeWhatsApp,
+} from "./services/whatsapp";
 
-const port = process.env.PORT || 5001;
+const port = process.env.PORT || 3000;
 const server = createServer();
 
 // Initialize WhatsApp client
@@ -17,5 +21,6 @@ server.get("/whatsapp/connect", (_, res) => {
   return res.json({
     qrCode: getQrCode(),
     isConnected: client.info ? true : false,
+    connectionState: getConnectionState(),
   });
 });

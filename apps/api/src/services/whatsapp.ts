@@ -2,9 +2,13 @@ import { Client, LocalAuth } from "whatsapp-web.js";
 
 let client: Client | null = null;
 let qrCode: string | null = null;
+let connectionState: "loading" | "ready" | "disconnected" | "error" =
+  "disconnected";
 
 export const initializeWhatsApp = () => {
   if (client) return client;
+
+  connectionState = "loading";
 
   client = new Client({
     authStrategy: new LocalAuth(),
@@ -19,6 +23,17 @@ export const initializeWhatsApp = () => {
 
   client.on("ready", () => {
     console.log("Client is ready!");
+    connectionState = "ready";
+  });
+
+  client.on("disconnected", () => {
+    console.log("Client disconnected");
+    connectionState = "disconnected";
+  });
+
+  client.on("auth_failure", () => {
+    console.log("Authentication failed");
+    connectionState = "error";
   });
 
   client.initialize();
@@ -28,4 +43,8 @@ export const initializeWhatsApp = () => {
 
 export const getQrCode = () => {
   return qrCode;
+};
+
+export const getConnectionState = () => {
+  return connectionState;
 };
