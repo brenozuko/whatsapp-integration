@@ -28,7 +28,7 @@ app.get("/whatsapp/connect", async (_, res) => {
     const client = await initializeWhatsApp();
     return res.json({
       qrCode: getQrCode(),
-      isConnected: client.info ? true : false,
+      isConnected: client?.info ? true : false,
       connectionState: getConnectionState(),
     });
   } catch (error) {

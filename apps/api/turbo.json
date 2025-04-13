@@ -11,6 +11,13 @@
       "outputs": [
         "dist/**"
       ]
+    },
+    "dev": {
+      "env": [
+        "PORT",
+        "DATABASE_URL"
+      ],
+      "persistent": true
     }
   }
 }

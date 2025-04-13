@@ -1,5 +1,5 @@
 import { log } from "@repo/logger";
-import { Client, LocalAuth, RemoteAuth } from "whatsapp-web.js";
+import { Client, RemoteAuth } from "whatsapp-web.js";
 import { prisma } from "../lib/db";
 import { getWhatsAppStore } from "../lib/whatsapp-store";
 import { emitContactsStatus, emitWhatsAppStatus } from "./socket";
@@ -118,66 +118,6 @@ export const initializeWhatsApp = async () => {
       isConnected: false,
       connectionState,
     });
-
-    // Fallback to LocalAuth if RemoteAuth fails
-    client = new Client({
-      authStrategy: new LocalAuth(),
-      puppeteer: {
-        args: ["--no-sandbox"],
-      },
-    });
-
-    // Register the same event handlers
-    client.on("qr", (qr) => {
-      qrCode = qr;
-      emitWhatsAppStatus({
-        qrCode,
-        isConnected: false,
-        connectionState,
-      });
-    });
-
-    client.on("ready", async () => {
-      log("Client is ready!");
-      connectionState = "ready";
-      qrCode = null;
-      emitWhatsAppStatus({
-        qrCode: null,
-        isConnected: true,
-        connectionState,
-      });
-
-      if (client) {
-        await saveContacts(client);
-      }
-    });
-
-    client.on("disconnected", () => {
-      log("Client disconnected");
-      connectionState = "disconnected";
-      emitWhatsAppStatus({
-        qrCode: null,
-        isConnected: false,
-        connectionState,
-      });
-    });
-
-    client.on("auth_failure", () => {
-      log("Authentication failed");
-      connectionState = "error";
-      emitWhatsAppStatus({
-        qrCode: null,
-        isConnected: false,
-        connectionState,
-      });
-    });
-
-    client.on("change_state", (state) => {
-      log("Client state changed:", state);
-    });
-
-    client.initialize();
-    return client;
   }
 };
 
