@@ -1,6 +1,7 @@
 import { log } from "@repo/logger";
-import { Client, NoAuth } from "whatsapp-web.js";
+import { Client, LocalAuth, RemoteAuth } from "whatsapp-web.js";
 import { prisma } from "../lib/db";
+import { getWhatsAppStore } from "../lib/whatsapp-store";
 import { emitContactsStatus, emitWhatsAppStatus } from "./socket";
 
 let client: Client | null = null;
@@ -41,67 +42,143 @@ const saveContacts = async (client: Client) => {
   }
 };
 
-export const initializeWhatsApp = () => {
+export const initializeWhatsApp = async () => {
   if (client) return client;
 
-  client = new Client({
-    authStrategy: new NoAuth(),
-    puppeteer: {
-      args: ["--no-sandbox"],
-    },
-  });
+  try {
+    // Get MongoDB store for session persistence
+    const store = await getWhatsAppStore();
 
-  client.on("qr", (qr) => {
-    qrCode = qr;
-    emitWhatsAppStatus({
-      qrCode,
-      isConnected: false,
-      connectionState,
-    });
-  });
-
-  client.on("ready", async () => {
-    log("Client is ready!");
-    connectionState = "ready";
-    qrCode = null;
-    emitWhatsAppStatus({
-      qrCode: null,
-      isConnected: true,
-      connectionState,
+    client = new Client({
+      authStrategy: new RemoteAuth({
+        store: store,
+        backupSyncIntervalMs: 300000, // Sync every 5 minutes
+      }),
+      puppeteer: {
+        args: ["--no-sandbox"],
+      },
     });
 
-    if (client) {
-      await saveContacts(client);
-    }
-  });
-
-  client.on("disconnected", () => {
-    log("Client disconnected");
-    connectionState = "disconnected";
-    emitWhatsAppStatus({
-      qrCode: null,
-      isConnected: false,
-      connectionState,
+    client.on("qr", (qr) => {
+      qrCode = qr;
+      emitWhatsAppStatus({
+        qrCode,
+        isConnected: false,
+        connectionState,
+      });
     });
-  });
 
-  client.on("auth_failure", () => {
-    log("Authentication failed");
+    client.on("ready", async () => {
+      log("Client is ready!");
+      connectionState = "ready";
+      qrCode = null;
+      emitWhatsAppStatus({
+        qrCode: null,
+        isConnected: true,
+        connectionState,
+      });
+
+      if (client) {
+        await saveContacts(client);
+      }
+    });
+
+    client.on("disconnected", () => {
+      log("Client disconnected");
+      connectionState = "disconnected";
+      emitWhatsAppStatus({
+        qrCode: null,
+        isConnected: false,
+        connectionState,
+      });
+    });
+
+    client.on("auth_failure", () => {
+      log("Authentication failed");
+      connectionState = "error";
+      emitWhatsAppStatus({
+        qrCode: null,
+        isConnected: false,
+        connectionState,
+      });
+    });
+
+    client.on("change_state", (state) => {
+      log("Client state changed:", state);
+    });
+
+    client.initialize();
+
+    return client;
+  } catch (error) {
+    console.error("Error initializing WhatsApp client:", error);
     connectionState = "error";
     emitWhatsAppStatus({
       qrCode: null,
       isConnected: false,
       connectionState,
     });
-  });
 
-  client.on("change_state", (state) => {
-    log("Client state changed:", state);
-  });
+    // Fallback to LocalAuth if RemoteAuth fails
+    client = new Client({
+      authStrategy: new LocalAuth(),
+      puppeteer: {
+        args: ["--no-sandbox"],
+      },
+    });
 
-  client.initialize();
+    // Register the same event handlers
+    client.on("qr", (qr) => {
+      qrCode = qr;
+      emitWhatsAppStatus({
+        qrCode,
+        isConnected: false,
+        connectionState,
+      });
+    });
 
-  return client;
+    client.on("ready", async () => {
+      log("Client is ready!");
+      connectionState = "ready";
+      qrCode = null;
+      emitWhatsAppStatus({
+        qrCode: null,
+        isConnected: true,
+        connectionState,
+      });
+
+      if (client) {
+        await saveContacts(client);
+      }
+    });
+
+    client.on("disconnected", () => {
+      log("Client disconnected");
+      connectionState = "disconnected";
+      emitWhatsAppStatus({
+        qrCode: null,
+        isConnected: false,
+        connectionState,
+      });
+    });
+
+    client.on("auth_failure", () => {
+      log("Authentication failed");
+      connectionState = "error";
+      emitWhatsAppStatus({
+        qrCode: null,
+        isConnected: false,
+        connectionState,
+      });
+    });
+
+    client.on("change_state", (state) => {
+      log("Client state changed:", state);
+    });
+
+    client.initialize();
+    return client;
+  }
 };
 
 export const getQrCode = () => {

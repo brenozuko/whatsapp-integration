@@ -15,7 +15,7 @@ import {
   MessageSquare,
   Users,
 } from "lucide-react";
-import { useEffect, useRef, useState } from "react";
+import { useEffect, useState } from "react";
 import socketService from "../lib/socket";
 
 export const Route = createFileRoute("/")({
@@ -34,7 +34,6 @@ function Index() {
     connectionState: "disconnected",
     isAddingContacts: false,
   });
-  const socketRef = useRef<any>(null);
 
   useEffect(() => {
     // Fetch initial status

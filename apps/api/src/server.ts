@@ -23,7 +23,7 @@ export const createServer = (): Express => {
     .get("/status", async (_, res) => {
       try {
         // Test database connection
-        await prisma.$queryRaw`SELECT 1`;
+        await prisma.$runCommandRaw({ ping: 1 });
         return res.json({
           ok: true,
           database: "connected",

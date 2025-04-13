@@ -1,9 +1,16 @@
 {
-  "extends": ["//"],
+  "extends": [
+    "//"
+  ],
   "tasks": {
     "build": {
-      "env": ["PORT"],
-      "outputs": ["dist/**"]
+      "env": [
+        "PORT",
+        "DATABASE_URL"
+      ],
+      "outputs": [
+        "dist/**"
+      ]
     }
   }
 }
