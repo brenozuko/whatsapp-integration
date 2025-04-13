@@ -12,7 +12,14 @@ export const createServer = (): Express => {
     .use(morgan("dev"))
     .use(urlencoded({ extended: true }))
     .use(json())
-    .use(cors())
+    .use(
+      cors({
+        origin: "http://localhost:3001",
+        methods: ["GET", "POST", "PUT", "DELETE", "OPTIONS"],
+        allowedHeaders: ["Content-Type", "Authorization"],
+        credentials: true,
+      })
+    )
     .get("/message/:name", (req, res) => {
       return res.json({ message: `hello ${req.params.name}` });
     })
@@ -28,7 +35,6 @@ export const createServer = (): Express => {
         return res.status(500).json({
           ok: false,
           database: "disconnected",
-          error: error instanceof Error ? error.message : "Unknown error",
         });
       }
     });

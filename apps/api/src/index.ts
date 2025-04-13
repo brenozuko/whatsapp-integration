@@ -12,14 +12,10 @@ server.listen(port, () => {
   log(`api running on ${port}`);
 });
 
-server.get("/hello", (_, res) => {
-  res.json({ message: "Hello World" });
-});
-
-server.get("/whatsapp/qr", (_, res) => {
-  const qr = getQrCode();
-  if (!qr) {
-    return res.status(404).json({ error: "QR code not available yet" });
-  }
-  return res.json({ qr });
+server.get("/whatsapp/connect", (_, res) => {
+  const client = initializeWhatsApp();
+  return res.json({
+    qrCode: getQrCode(),
+    isConnected: client.info ? true : false,
+  });
 });

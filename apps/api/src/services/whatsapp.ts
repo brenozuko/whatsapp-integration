@@ -1,4 +1,3 @@
-import qrcode from "qrcode-terminal";
 import { Client, LocalAuth } from "whatsapp-web.js";
 
 let client: Client | null = null;
@@ -16,7 +15,6 @@ export const initializeWhatsApp = () => {
 
   client.on("qr", (qr) => {
     qrCode = qr;
-    qrcode.generate(qr, { small: true });
   });
 
   client.on("ready", () => {
