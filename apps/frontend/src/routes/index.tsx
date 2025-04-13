@@ -16,6 +16,7 @@ import {
   Users,
 } from "lucide-react";
 import { useEffect, useRef, useState } from "react";
+import { io } from "socket.io-client";
 
 export const Route = createFileRoute("/")({
   component: Index,
@@ -26,51 +27,36 @@ function Index() {
     qrCode: string | null;
     isConnected: boolean;
     connectionState: "loading" | "ready" | "disconnected" | "error";
+    isAddingContacts: boolean;
   }>({
     qrCode: null,
     isConnected: false,
     connectionState: "disconnected",
+    isAddingContacts: false,
   });
-  const intervalRef = useRef<number | null>(null);
+  const socketRef = useRef<any>(null);
 
   useEffect(() => {
-    const fetchStatus = async () => {
-      try {
-        // Skip fetching if we already have a QR code and there's no error
-        if (status.qrCode && status.connectionState !== "error") {
-          return;
-        }
+    // Initialize socket connection
+    socketRef.current = io("http://localhost:3000", {
+      withCredentials: true,
+    });
 
-        const response = await fetch("http://localhost:3000/whatsapp/connect");
-        const data = await response.json();
-        setStatus(data);
-      } catch (error) {
-        console.error("Error fetching WhatsApp status:", error);
-        setStatus((prev) => ({ ...prev, connectionState: "error" }));
+    // Listen for WhatsApp status updates
+    socketRef.current.on("whatsapp-status", (data: any) => {
+      setStatus(data);
+      if (data.isAddingContacts) {
+        window.location.href = "/contacts";
       }
-    };
+    });
 
-    fetchStatus();
-
-    // Clear existing interval if any
-    if (intervalRef.current) {
-      clearInterval(intervalRef.current);
-    }
-
-    // Only set interval if we don't have QR code or there's an error
-    if (!status.qrCode || status.connectionState === "error") {
-      intervalRef.current = window.setInterval(
-        fetchStatus,
-        5000
-      ) as unknown as number;
-    }
-
+    // Cleanup on unmount
     return () => {
-      if (intervalRef.current) {
-        clearInterval(intervalRef.current);
+      if (socketRef.current) {
+        socketRef.current.disconnect();
       }
     };
-  }, [status.qrCode, status.connectionState]);
+  }, []);
 
   return (
     <main className="flex min-h-screen flex-col items-center justify-center p-4 bg-white">
