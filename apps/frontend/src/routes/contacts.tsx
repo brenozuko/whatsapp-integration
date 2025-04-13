@@ -8,6 +8,7 @@ import {
 import { createFileRoute } from "@tanstack/react-router";
 import { Loader2 } from "lucide-react";
 import { useEffect, useState } from "react";
+import socketService from "../lib/socket";
 
 interface Contact {
   id: string;
@@ -24,6 +25,7 @@ export const Route = createFileRoute("/contacts")({
 function Contacts() {
   const [contacts, setContacts] = useState<Contact[]>([]);
   const [loading, setLoading] = useState(true);
+  const [isAddingContacts, setIsAddingContacts] = useState(false);
 
   useEffect(() => {
     const fetchContacts = async () => {
@@ -38,7 +40,26 @@ function Contacts() {
       }
     };
 
+    // Check initial contacts loading status
+    fetch("http://localhost:3000/whatsapp/contacts-status")
+      .then((res) => res.json())
+      .then((data) => {
+        setIsAddingContacts(data.isAddingContacts);
+      })
+      .catch((error) => {
+        console.error("Error fetching contacts status:", error);
+      });
+
+    // Listen for contacts status updates
+    const unsubscribeContacts = socketService.onContactsStatus((data) => {
+      setIsAddingContacts(data.isAddingContacts);
+    });
+
     fetchContacts();
+
+    return () => {
+      unsubscribeContacts();
+    };
   }, []);
 
   return (
@@ -51,6 +72,12 @@ function Contacts() {
           </CardDescription>
         </CardHeader>
         <CardContent>
+          {isAddingContacts && (
+            <div className="mb-4 bg-blue-50 p-4 rounded-md flex items-center text-blue-700">
+              <Loader2 className="h-4 w-4 animate-spin mr-2" />
+              <span>Syncing contacts from WhatsApp...</span>
+            </div>
+          )}
           {loading ? (
             <div className="flex justify-center items-center h-32">
               <Loader2 className="h-8 w-8 animate-spin text-primary" />

@@ -16,7 +16,7 @@ import {
   Users,
 } from "lucide-react";
 import { useEffect, useRef, useState } from "react";
-import { io } from "socket.io-client";
+import socketService from "../lib/socket";
 
 export const Route = createFileRoute("/")({
   component: Index,
@@ -37,24 +37,34 @@ function Index() {
   const socketRef = useRef<any>(null);
 
   useEffect(() => {
-    // Initialize socket connection
-    socketRef.current = io("http://localhost:3000", {
-      withCredentials: true,
+    // Fetch initial status
+    fetch("http://localhost:3000/whatsapp/connect")
+      .then((res) => res.json())
+      .then((data) => {
+        setStatus((prev) => ({ ...prev, ...data }));
+      })
+      .catch((error) => {
+        console.error("Error fetching WhatsApp status:", error);
+      });
+
+    // Listen for WhatsApp status updates using socket service
+    const unsubscribeStatus = socketService.onWhatsAppStatus((data) => {
+      setStatus((prev) => ({ ...prev, ...data }));
     });
 
-    // Listen for WhatsApp status updates
-    socketRef.current.on("whatsapp-status", (data: any) => {
-      setStatus(data);
+    // Listen for contacts status updates
+    const unsubscribeContacts = socketService.onContactsStatus((data) => {
+      setStatus((prev) => ({ ...prev, ...data }));
       if (data.isAddingContacts) {
+        // If contacts are being added, navigate to contacts page
         window.location.href = "/contacts";
       }
     });
 
     // Cleanup on unmount
     return () => {
-      if (socketRef.current) {
-        socketRef.current.disconnect();
-      }
+      unsubscribeStatus();
+      unsubscribeContacts();
     };
   }, []);
 

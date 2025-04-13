@@ -1,16 +1,19 @@
+import { log } from "@repo/logger";
 import { Client, NoAuth } from "whatsapp-web.js";
 import { prisma } from "../lib/db";
+import { emitContactsStatus, emitWhatsAppStatus } from "./socket";
 
 let client: Client | null = null;
 let qrCode: string | null = null;
 let connectionState: "loading" | "ready" | "disconnected" | "error" =
   "disconnected";
-let lastQrCode: string | null = null;
 let isAddingContacts = false;
 
 const saveContacts = async (client: Client) => {
   try {
     isAddingContacts = true;
+    emitContactsStatus({ isAddingContacts: true });
+
     const contacts = await client.getContacts();
 
     // Save each contact to the database
@@ -29,13 +32,12 @@ const saveContacts = async (client: Client) => {
       }
     }
 
-    console.log(
-      `Successfully saved ${contacts.length} contacts to the database`
-    );
+    log(`Successfully saved ${contacts.length} contacts to the database`);
   } catch (error) {
     console.error("Error saving contacts:", error);
   } finally {
     isAddingContacts = false;
+    emitContactsStatus({ isAddingContacts: false });
   }
 };
 
@@ -51,30 +53,50 @@ export const initializeWhatsApp = () => {
 
   client.on("qr", (qr) => {
     qrCode = qr;
-    lastQrCode = qr;
+    emitWhatsAppStatus({
+      qrCode,
+      isConnected: false,
+      connectionState,
+    });
   });
 
   client.on("ready", async () => {
-    console.log("Client is ready!");
+    log("Client is ready!");
     connectionState = "ready";
     qrCode = null;
+    emitWhatsAppStatus({
+      qrCode: null,
+      isConnected: true,
+      connectionState,
+    });
+
     if (client) {
       await saveContacts(client);
     }
   });
 
   client.on("disconnected", () => {
-    console.log("Client disconnected");
+    log("Client disconnected");
     connectionState = "disconnected";
+    emitWhatsAppStatus({
+      qrCode: null,
+      isConnected: false,
+      connectionState,
+    });
   });
 
   client.on("auth_failure", () => {
-    console.log("Authentication failed");
+    log("Authentication failed");
     connectionState = "error";
+    emitWhatsAppStatus({
+      qrCode: null,
+      isConnected: false,
+      connectionState,
+    });
   });
 
   client.on("change_state", (state) => {
-    console.log("Client state changed:", state);
+    log("Client state changed:", state);
   });
 
   client.initialize();
