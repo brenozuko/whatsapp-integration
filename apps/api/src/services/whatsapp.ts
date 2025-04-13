@@ -1,4 +1,4 @@
-import { Client, LocalAuth } from "whatsapp-web.js";
+import { Client, NoAuth } from "whatsapp-web.js";
 
 let client: Client | null = null;
 let qrCode: string | null = null;
@@ -8,10 +8,8 @@ let connectionState: "loading" | "ready" | "disconnected" | "error" =
 export const initializeWhatsApp = () => {
   if (client) return client;
 
-  connectionState = "loading";
-
   client = new Client({
-    authStrategy: new LocalAuth(),
+    authStrategy: new NoAuth(),
     puppeteer: {
       args: ["--no-sandbox"],
     },
@@ -19,6 +17,10 @@ export const initializeWhatsApp = () => {
 
   client.on("qr", (qr) => {
     qrCode = qr;
+  });
+
+  client.on("authenticated", () => {
+    connectionState = "loading";
   });
 
   client.on("ready", () => {

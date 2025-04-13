@@ -7,12 +7,13 @@ import {
   CardHeader,
   CardTitle,
 } from "@/components/ui/card";
-import { createFileRoute } from "@tanstack/react-router";
+import { createFileRoute, Link } from "@tanstack/react-router";
 import {
   AlertCircle,
   CheckCircle2,
   Loader2,
   MessageSquare,
+  Users,
 } from "lucide-react";
 import { useEffect, useRef, useState } from "react";
 
@@ -128,29 +129,31 @@ function Index() {
           )}
 
           <div className="relative mb-6">
-            <div className="w-64 h-64 border-2 border-gray-300 rounded-lg flex items-center justify-center bg-white">
-              {status.connectionState === "loading" || !status.qrCode ? (
-                <div className="flex flex-col items-center space-y-2">
-                  <Loader2 className="h-8 w-8 animate-spin text-green-500" />
-                  <p className="text-sm text-gray-500">
-                    {status.connectionState === "loading"
-                      ? "Initializing WhatsApp..."
-                      : "Loading QR code..."}
-                  </p>
-                </div>
-              ) : status.qrCode ? (
-                <img
-                  src={`https://api.qrserver.com/v1/create-qr-code/?size=240x240&data=${encodeURIComponent(status.qrCode)}`}
-                  alt="WhatsApp QR Code"
-                  className="w-full h-full p-2"
-                />
-              ) : (
-                <div className="flex flex-col items-center space-y-2">
-                  <Loader2 className="h-8 w-8 animate-spin text-green-500" />
-                  <p className="text-sm text-gray-500">Loading QR code...</p>
-                </div>
-              )}
-            </div>
+            {!status.isConnected && (
+              <div className="w-64 h-64 border-2 border-gray-300 rounded-lg flex items-center justify-center bg-white">
+                {status.connectionState === "loading" || !status.qrCode ? (
+                  <div className="flex flex-col items-center space-y-2">
+                    <Loader2 className="h-8 w-8 animate-spin text-green-500" />
+                    <p className="text-sm text-gray-500">
+                      {status.connectionState === "loading"
+                        ? "Initializing WhatsApp..."
+                        : "Loading QR code..."}
+                    </p>
+                  </div>
+                ) : status.qrCode ? (
+                  <img
+                    src={`https://api.qrserver.com/v1/create-qr-code/?size=240x240&data=${encodeURIComponent(status.qrCode)}`}
+                    alt="WhatsApp QR Code"
+                    className="w-full h-full p-2"
+                  />
+                ) : (
+                  <div className="flex flex-col items-center space-y-2">
+                    <Loader2 className="h-8 w-8 animate-spin text-green-500" />
+                    <p className="text-sm text-gray-500">Loading QR code...</p>
+                  </div>
+                )}
+              </div>
+            )}
           </div>
 
           <div className="text-sm text-gray-600 space-y-4 w-full">
@@ -163,6 +166,15 @@ function Index() {
           </div>
         </CardContent>
         <CardFooter className="flex flex-col space-y-2">
+          {status.isConnected && (
+            <Link
+              to="/contacts"
+              className="inline-flex items-center justify-center rounded-md text-sm font-medium ring-offset-background transition-colors focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-ring focus-visible:ring-offset-2 disabled:pointer-events-none disabled:opacity-50 bg-primary text-primary-foreground hover:bg-primary/90 h-10 px-4 py-2"
+            >
+              <Users className="mr-2 h-4 w-4" />
+              View Contacts
+            </Link>
+          )}
           <p className="text-xs text-gray-400 text-center">
             Your data will be stored securely and only used to enhance your
             Village experience.
