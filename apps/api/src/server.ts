@@ -6,6 +6,7 @@ import { prisma } from "./lib/db";
 
 export const createServer = (): Express => {
   const app = express();
+
   app
     .disable("x-powered-by")
     .use(morgan("dev"))
