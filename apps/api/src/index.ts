@@ -7,3 +7,7 @@ const server = createServer();
 server.listen(port, () => {
   log(`api running on ${port}`);
 });
+
+server.get("/hello", (_, res) => {
+  res.json({ message: "Hello World" });
+});

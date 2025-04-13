@@ -2,7 +2,7 @@ import { json, urlencoded } from "body-parser";
 import cors from "cors";
 import express, { type Express } from "express";
 import morgan from "morgan";
-import { prisma } from "./lib/prisma";
+import { prisma } from "./lib/db";
 
 export const createServer = (): Express => {
   const app = express();
