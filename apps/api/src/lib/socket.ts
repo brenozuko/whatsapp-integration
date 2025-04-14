@@ -45,7 +45,12 @@ export const emitWhatsAppStatus = (data: WhatsAppStatus) => {
   io.emit("whatsapp:status", data);
 };
 
-export const emitContactsStatus = (data: { isAddingContacts: boolean }) => {
+export interface ContactsStatus {
+  isAddingContacts: boolean;
+  isAddingMessages?: boolean;
+}
+
+export const emitContactsStatus = (data: ContactsStatus) => {
   if (!io) return;
   io.emit("whatsapp:contacts", data);
 };

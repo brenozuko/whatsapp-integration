@@ -1,12 +1,13 @@
 import http from "http";
 import { connectToDatabase } from "./lib/mongoose";
+import { initializeSocket } from "./lib/socket";
 import { createServer } from "./server";
 import { getContacts } from "./services/contacts";
-import { initializeSocket } from "./services/socket";
 import {
   getConnectionState,
   getCurrentIntegration,
   getIsAddingContacts,
+  getIsAddingMessages,
   getQrCode,
   initializeWhatsApp,
 } from "./services/whatsapp";
@@ -70,6 +71,7 @@ connectToDatabase()
     app.get("/whatsapp/contacts-status", (_, res) => {
       return res.json({
         isAddingContacts: getIsAddingContacts(),
+        isAddingMessages: getIsAddingMessages(),
       });
     });
 

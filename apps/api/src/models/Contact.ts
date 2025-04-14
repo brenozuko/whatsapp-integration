@@ -5,6 +5,8 @@ export interface IContact extends Document {
   phone: string;
   image?: string;
   integration: mongoose.Types.ObjectId;
+  messageCount: number;
+  lastMessageDate?: Date;
   createdAt: Date;
   updatedAt: Date;
 }
@@ -19,6 +21,8 @@ const ContactSchema = new Schema<IContact>(
       ref: "Integration",
       required: true,
     },
+    messageCount: { type: Number, default: 0 },
+    lastMessageDate: { type: Date, required: false },
   },
   { timestamps: true }
 );
