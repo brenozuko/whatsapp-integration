@@ -1,13 +1,10 @@
-import { Client, RemoteAuth } from "whatsapp-web.js";
+import { Client, LocalAuth } from "whatsapp-web.js";
+import { prisma } from "../lib/prisma";
 import {
   emitContactsStatus,
   emitWhatsAppStatus,
   WhatsAppStatus,
 } from "../lib/socket";
-import { getWhatsAppStore } from "../lib/whatsapp-store";
-import { Contact } from "../models/Contact";
-import { IIntegration, Integration } from "../models/Integration";
-import { Message } from "../models/Message";
 
 let client: Client | null = null;
 let qrCode: string | null = null;
@@ -15,7 +12,7 @@ let connectionState: "loading" | "ready" | "disconnected" | "error" =
   "disconnected";
 let isAddingContacts = false;
 let isAddingMessages = false;
-let currentIntegration: IIntegration | null = null;
+let currentIntegration: any = null;
 
 const saveContacts = async (client: Client) => {
   try {
@@ -31,15 +28,22 @@ const saveContacts = async (client: Client) => {
 
     for (const contact of contacts) {
       if (contact.number) {
-        await Contact.findOneAndUpdate(
-          { phone: contact.number, integration: currentIntegration._id },
-          {
+        await prisma.contact.upsert({
+          where: {
+            phone_integrationId: {
+              phone: contact.number,
+              integrationId: currentIntegration.id,
+            },
+          },
+          update: {
+            name: contact.name || contact.number,
+          },
+          create: {
             name: contact.name || contact.number,
             phone: contact.number,
-            integration: currentIntegration._id,
+            integrationId: currentIntegration.id,
           },
-          { upsert: true, new: true }
-        );
+        });
       }
     }
 
@@ -80,17 +84,19 @@ const saveMessages = async (client: Client) => {
       const contactId = chat.id.user;
 
       // Find the contact in our database
-      const contact = await Contact.findOne({
-        phone: contactId,
-        integration: currentIntegration._id,
+      const contact = await prisma.contact.findFirst({
+        where: {
+          phone: contactId,
+          integrationId: currentIntegration.id,
+        },
       });
 
-      if (!contact || !contact._id) {
+      if (!contact || !contact.id) {
         console.log(`No contact found for chat ${chat.name} (${contactId})`);
         continue;
       }
 
-      processedContacts.add(contact._id.toString());
+      processedContacts.add(contact.id);
 
       // Fetch messages for this chat
       const messages = await chat.fetchMessages({ limit: 100 });
@@ -104,59 +110,100 @@ const saveMessages = async (client: Client) => {
         if (!msg.id || (!msg.body && !msg.hasMedia)) continue;
 
         // Create or update message record
-        await Message.findOneAndUpdate(
-          { messageId: msg.id._serialized },
-          {
+        await prisma.message.upsert({
+          where: {
+            messageId: msg.id._serialized,
+          },
+          update: {
+            body: msg.body || "(Media message)",
+            from: msg.from,
+            to: msg.to,
+            fromMe: msg.fromMe,
+            timestamp: msg.timestamp
+              ? new Date(msg.timestamp * 1000)
+              : new Date(),
+          },
+          create: {
             messageId: msg.id._serialized,
             body: msg.body || "(Media message)",
             from: msg.from,
             to: msg.to,
             fromMe: msg.fromMe,
-            contact: contact._id,
-            integration: currentIntegration._id,
+            contactId: contact.id,
+            integrationId: currentIntegration.id,
             timestamp: msg.timestamp
               ? new Date(msg.timestamp * 1000)
               : new Date(),
           },
-          { upsert: true, new: true }
-        );
+        });
 
         totalMessages++;
       }
 
       // Update contact with message count and last message date
-      const messageCount = await Message.countDocuments({
-        contact: contact._id,
-      });
-      const lastMessage = await Message.findOne({ contact: contact._id }).sort({
-        timestamp: -1,
+      const messageCount = await prisma.message.count({
+        where: {
+          contactId: contact.id,
+        },
       });
 
-      await Contact.findByIdAndUpdate(contact._id, {
-        messageCount,
-        lastMessageDate: lastMessage?.timestamp || new Date(),
+      const lastMessage = await prisma.message.findFirst({
+        where: {
+          contactId: contact.id,
+        },
+        orderBy: {
+          timestamp: "desc",
+        },
+      });
+
+      await prisma.contact.update({
+        where: {
+          id: contact.id,
+        },
+        data: {
+          messageCount,
+          lastMessageDate: lastMessage?.timestamp || new Date(),
+        },
       });
     }
 
     // Process all contacts that have messages in the database
     // but weren't updated in the loop above
-    const contactsWithMessages = await Message.distinct("contact", {
-      integration: currentIntegration._id,
+    const contactsWithMessages = await prisma.message.findMany({
+      where: {
+        integrationId: currentIntegration.id,
+      },
+      distinct: ["contactId"],
+      select: {
+        contactId: true,
+      },
     });
 
-    for (const contactId of contactsWithMessages) {
-      const contactIdStr = contactId.toString();
-      if (!processedContacts.has(contactIdStr)) {
-        const messageCount = await Message.countDocuments({
-          contact: contactId,
-        });
-        const lastMessage = await Message.findOne({ contact: contactId }).sort({
-          timestamp: -1,
+    for (const { contactId } of contactsWithMessages) {
+      if (!processedContacts.has(contactId)) {
+        const messageCount = await prisma.message.count({
+          where: {
+            contactId,
+          },
         });
 
-        await Contact.findByIdAndUpdate(contactId, {
-          messageCount,
-          lastMessageDate: lastMessage?.timestamp || new Date(),
+        const lastMessage = await prisma.message.findFirst({
+          where: {
+            contactId,
+          },
+          orderBy: {
+            timestamp: "desc",
+          },
+        });
+
+        await prisma.contact.update({
+          where: {
+            id: contactId,
+          },
+          data: {
+            messageCount,
+            lastMessageDate: lastMessage?.timestamp || new Date(),
+          },
         });
       }
     }
@@ -179,13 +226,9 @@ export const initializeWhatsApp = async (
   if (client) return client;
 
   try {
-    const store = await getWhatsAppStore();
-
+    const auth = new LocalAuth();
     client = new Client({
-      authStrategy: new RemoteAuth({
-        store: store,
-        backupSyncIntervalMs: 300000, // Sync every 5 minutes
-      }),
+      authStrategy: auth,
       puppeteer: {
         args: ["--no-sandbox"],
       },
@@ -214,19 +257,28 @@ export const initializeWhatsApp = async (
 
       if (userName && userPhone) {
         // Check if an integration already exists for this phone number
-        const existingIntegration = await Integration.findOne({ userPhone });
+        const existingIntegration = await prisma.integration.findUnique({
+          where: { userPhone },
+        });
 
-        const integration = await Integration.findOneAndUpdate(
-          { userPhone },
-          {
+        const integration = await prisma.integration.upsert({
+          where: {
+            userPhone,
+          },
+          update: {
+            userName,
+            whatsappId: clientInfo.wid._serialized,
+            isConnected: true,
+            lastConnection: new Date(),
+          },
+          create: {
             userName,
             userPhone,
             whatsappId: clientInfo.wid._serialized,
             isConnected: true,
             lastConnection: new Date(),
           },
-          { upsert: true, new: true }
-        );
+        });
 
         if (integration) {
           currentIntegration = integration;
@@ -266,8 +318,13 @@ export const initializeWhatsApp = async (
       connectionState = "disconnected";
 
       if (currentIntegration) {
-        await Integration.findByIdAndUpdate(currentIntegration._id, {
-          isConnected: false,
+        await prisma.integration.update({
+          where: {
+            id: currentIntegration.id,
+          },
+          data: {
+            isConnected: false,
+          },
         });
         currentIntegration = null;
       }
@@ -284,8 +341,13 @@ export const initializeWhatsApp = async (
       connectionState = "error";
 
       if (currentIntegration) {
-        await Integration.findByIdAndUpdate(currentIntegration._id, {
-          isConnected: false,
+        await prisma.integration.update({
+          where: {
+            id: currentIntegration.id,
+          },
+          data: {
+            isConnected: false,
+          },
         });
         currentIntegration = null;
       }
@@ -308,42 +370,61 @@ export const initializeWhatsApp = async (
         // Find contact from the sender
         const phone = msg.from.split("@")[0];
 
-        const contact = await Contact.findOne({
-          phone,
-          integration: currentIntegration._id,
+        const contact = await prisma.contact.findFirst({
+          where: {
+            phone,
+            integrationId: currentIntegration.id,
+          },
         });
 
-        if (!contact || !contact._id) {
+        if (!contact || !contact.id) {
           console.log(`Received message from unknown contact: ${phone}`);
           return;
         }
 
         // Save the message
-        await Message.findOneAndUpdate(
-          { messageId: msg.id._serialized },
-          {
+        await prisma.message.upsert({
+          where: {
+            messageId: msg.id._serialized,
+          },
+          update: {
+            body: msg.body || "(Media message)",
+            from: msg.from,
+            to: msg.to,
+            fromMe: msg.fromMe,
+            timestamp: msg.timestamp
+              ? new Date(msg.timestamp * 1000)
+              : new Date(),
+          },
+          create: {
             messageId: msg.id._serialized,
             body: msg.body || "(Media message)",
             from: msg.from,
             to: msg.to,
             fromMe: msg.fromMe,
-            contact: contact._id,
-            integration: currentIntegration._id,
+            contactId: contact.id,
+            integrationId: currentIntegration.id,
             timestamp: msg.timestamp
               ? new Date(msg.timestamp * 1000)
               : new Date(),
           },
-          { upsert: true, new: true }
-        );
-
-        // Update contact message count
-        const messageCount = await Message.countDocuments({
-          contact: contact._id,
         });
 
-        await Contact.findByIdAndUpdate(contact._id, {
-          messageCount,
-          lastMessageDate: new Date(),
+        // Update contact message count
+        const messageCount = await prisma.message.count({
+          where: {
+            contactId: contact.id,
+          },
+        });
+
+        await prisma.contact.update({
+          where: {
+            id: contact.id,
+          },
+          data: {
+            messageCount,
+            lastMessageDate: new Date(),
+          },
         });
       } catch (error) {
         console.error("Error processing incoming message:", error);

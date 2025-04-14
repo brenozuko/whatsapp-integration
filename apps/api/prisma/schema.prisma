@@ -1,0 +1,55 @@
+// This is your Prisma schema file,
+// learn more about it in the docs: https://pris.ly/d/prisma-schema
+
+generator client {
+    provider = "prisma-client-js"
+}
+
+datasource db {
+    provider = "postgresql"
+    url      = env("DATABASE_URL")
+}
+
+model Integration {
+    id             String    @id @default(uuid())
+    userName       String
+    userPhone      String    @unique
+    whatsappId     String?
+    isConnected    Boolean   @default(false)
+    lastConnection DateTime?
+    contacts       Contact[]
+    createdAt      DateTime  @default(now())
+    updatedAt      DateTime  @updatedAt
+    Message        Message[]
+}
+
+model Contact {
+    id              String      @id @default(uuid())
+    name            String
+    phone           String
+    messageCount    Int         @default(0)
+    lastMessageDate DateTime?
+    integration     Integration @relation(fields: [integrationId], references: [id], onDelete: Cascade)
+    integrationId   String
+    messages        Message[]
+    createdAt       DateTime    @default(now())
+    updatedAt       DateTime    @updatedAt
+
+    @@unique([phone, integrationId])
+}
+
+model Message {
+    id            String      @id @default(uuid())
+    messageId     String      @unique
+    body          String
+    from          String
+    to            String
+    fromMe        Boolean
+    contact       Contact     @relation(fields: [contactId], references: [id], onDelete: Cascade)
+    contactId     String
+    integration   Integration @relation(fields: [integrationId], references: [id], onDelete: Cascade)
+    integrationId String
+    timestamp     DateTime
+    createdAt     DateTime    @default(now())
+    updatedAt     DateTime    @updatedAt
+}

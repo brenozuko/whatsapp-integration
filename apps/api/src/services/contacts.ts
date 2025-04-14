@@ -1,5 +1,5 @@
-import mongoose from "mongoose";
-import { Contact, IContact } from "../models/Contact";
+import { Contact } from "@prisma/client";
+import { prisma } from "../lib/prisma";
 
 interface GetContactsParams {
   page?: number;
@@ -9,16 +9,11 @@ interface GetContactsParams {
 }
 
 interface GetContactsResponse {
-  contacts: IContact[];
+  contacts: Contact[];
   total: number;
   page: number;
   pageSize: number;
   totalPages: number;
-}
-
-interface ContactFilter {
-  name?: { $regex: string; $options: string };
-  integration?: mongoose.Types.ObjectId;
 }
 
 export async function getContacts({
@@ -30,19 +25,28 @@ export async function getContacts({
   const skip = (page - 1) * pageSize;
 
   // Create query filter
-  const filter: ContactFilter = {};
-
-  if (search) {
-    filter.name = { $regex: search, $options: "i" };
-  }
-
-  if (integrationId) {
-    filter.integration = new mongoose.Types.ObjectId(integrationId);
-  }
+  const where = {
+    ...(search && {
+      name: {
+        contains: search,
+        mode: "insensitive" as const,
+      },
+    }),
+    ...(integrationId && {
+      integrationId,
+    }),
+  };
 
   const [contacts, total] = await Promise.all([
-    Contact.find(filter).skip(skip).limit(pageSize).sort({ name: 1 }).exec(),
-    Contact.countDocuments(filter),
+    prisma.contact.findMany({
+      where,
+      skip,
+      take: pageSize,
+      orderBy: {
+        name: "asc",
+      },
+    }),
+    prisma.contact.count({ where }),
   ]);
 
   return {

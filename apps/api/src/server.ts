@@ -1,8 +1,8 @@
 import { json, urlencoded } from "body-parser";
 import cors from "cors";
 import express, { type Express } from "express";
-import mongoose from "mongoose";
 import morgan from "morgan";
+import { prisma } from "./lib/prisma";
 
 export const createServer = (): Express => {
   const app = express();
@@ -22,13 +22,14 @@ export const createServer = (): Express => {
     )
     .get("/status", async (_, res) => {
       try {
-        // Test database connection using mongoose
-        const status = mongoose.connection.readyState;
+        // Test database connection using Prisma
+        await prisma.$queryRaw`SELECT 1`;
         return res.json({
           ok: true,
-          database: status === 1 ? "connected" : "disconnected",
+          database: "connected",
         });
       } catch (error) {
+        console.error("Database connection error:", error);
         return res.status(500).json({
           ok: false,
           database: "disconnected",

@@ -123,6 +123,9 @@ function Index() {
   }, []);
 
   const renderQRCode = () => {
+    if (status.isConnected) {
+      return null;
+    }
     if (!status.qrCode) {
       return (
         <div className="w-64 h-64 border-2 border-gray-300 rounded-lg flex items-center justify-center bg-white">
