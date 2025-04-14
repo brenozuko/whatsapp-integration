@@ -2,11 +2,7 @@
   "$schema": "https://turbo.build/schema.json",
   "ui": "tui",
   "globalEnv": [
-    "NODE_ENV",
-    "AWS_REGION",
-    "AWS_ACCESS_KEY_ID",
-    "AWS_SECRET_ACCESS_KEY",
-    "AWS_S3_BUCKET_NAME"
+    "NODE_ENV"
   ],
   "tasks": {
     "build": {

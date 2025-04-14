@@ -1,28 +1,10 @@
-import { S3Client } from "@aws-sdk/client-s3";
-import { Client, Message, RemoteAuth } from "whatsapp-web.js";
-import { AwsS3Store } from "wwebjs-aws-s3";
+import { Client, Message } from "whatsapp-web.js";
 import { prisma } from "../lib/prisma";
 import {
   emitContactsStatus,
   emitWhatsAppStatus,
   WhatsAppStatus,
 } from "../lib/socket";
-
-// Initialize S3 client
-const s3 = new S3Client({
-  region: process.env.AWS_REGION || "us-east-1",
-  credentials: {
-    accessKeyId: process.env.AWS_ACCESS_KEY_ID || "",
-    secretAccessKey: process.env.AWS_SECRET_ACCESS_KEY || "",
-  },
-});
-
-// Initialize S3 store
-const store = new AwsS3Store({
-  bucketName: process.env.AWS_S3_BUCKET_NAME || "whatsapp-sessions",
-  remoteDataPath: "sessions/",
-  s3Client: s3,
-});
 
 // Store multiple clients and their states
 const clients = new Map<
@@ -65,7 +47,7 @@ const saveContacts = async (client: Client, integrationId: string) => {
         update: {
           name: contact.name || "",
           profilePicture: await contact.getProfilePicUrl(),
-          messageCount: messages.length,
+          messageCount: messages.length || 0,
           lastMessageDate: messages[0].timestamp
             ? new Date(messages[0].timestamp * 1000)
             : new Date(),
@@ -74,7 +56,7 @@ const saveContacts = async (client: Client, integrationId: string) => {
           name: contact.name || "",
           phone: contact.number,
           profilePicture: await contact.getProfilePicUrl(),
-          messageCount: messages.length,
+          messageCount: messages.length || 0,
           lastMessageDate: messages[0].timestamp
             ? new Date(messages[0].timestamp * 1000)
             : new Date(),
@@ -113,7 +95,7 @@ const updateContactOnMessage = async (msg: Message, integrationId: string) => {
       },
     },
     data: {
-      messageCount: messages.length,
+      messageCount: messages?.length || 0,
       lastMessageDate: messages[0].timestamp
         ? new Date(messages[0].timestamp * 1000)
         : new Date(),
@@ -129,12 +111,6 @@ export const initializeWhatsApp = async (integrationId: string) => {
 
   try {
     const client = new Client({
-      authStrategy: new RemoteAuth({
-        clientId: integrationId,
-        dataPath: "sessions",
-        store: store,
-        backupSyncIntervalMs: 600000, // 10 minutes
-      }),
       puppeteer: {
         args: ["--no-sandbox"],
       },
@@ -216,9 +192,9 @@ export const initializeWhatsApp = async (integrationId: string) => {
       }
     });
 
-    client.on("message", async (msg) => {
-      await updateContactOnMessage(msg, integrationId);
-    });
+    // client.on("message", async (msg) => {
+    //   await updateContactOnMessage(msg, integrationId);
+    // });
 
     client.initialize();
 
@@ -274,9 +250,6 @@ export const disconnectWhatsApp = async (integrationId: string) => {
       await prisma.contact.deleteMany({
         where: { integrationId },
       });
-
-      // Delete session data from S3
-      await store.deleteSession(integrationId);
 
       // Emit disconnected status
       emitWhatsAppStatus({

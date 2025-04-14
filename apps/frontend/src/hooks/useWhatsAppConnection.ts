@@ -29,7 +29,6 @@ export const useWhatsAppConnection = () => {
       }
       return data;
     },
-    refetchInterval: 5000, // Refetch every 5 seconds
   });
 
   useEffect(() => {
