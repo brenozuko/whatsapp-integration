@@ -41,10 +41,7 @@ import {
   Loader2,
   LogOut,
   MessageSquare,
-  Search,
-  SortAsc,
-  SortDesc,
-  UserCheck,
+  RefreshCw,
 } from "lucide-react";
 import { useState } from "react";
 export const Route = createFileRoute("/contacts")({
@@ -63,7 +60,7 @@ function Contacts() {
     { id: "createdAt", desc: true },
   ]);
 
-  const { data, isLoading } = useContacts({
+  const { data, refetch } = useContacts({
     page: currentPage,
     pageSize,
     searchQuery: debouncedSearchQuery,
@@ -72,11 +69,14 @@ function Contacts() {
 
   const contacts = data?.contacts || [];
   const totalPages = data?.totalPages || 1;
-  const totalContacts = data?.total || 0;
 
   const handleDisconnect = () => {
     disconnect();
     navigate({ to: "/" });
+  };
+
+  const handleReload = () => {
+    refetch();
   };
   // Generate page numbers with ellipsis
   const getPageNumbers = () => {
@@ -196,256 +196,187 @@ function Contacts() {
     pageCount: totalPages,
   });
 
-  // If loading or syncing contacts, show a loading state
-  if (isLoading || isAddingContacts) {
-    return (
-      <main className="container mx-auto py-8">
-        <Card className="w-full max-w-4xl mx-auto">
-          <CardHeader>
-            <CardTitle>Your Contacts</CardTitle>
-            <CardDescription>
-              {isAddingContacts
-                ? "Syncing your WhatsApp contacts..."
-                : "Loading contacts..."}
-            </CardDescription>
-          </CardHeader>
-          <CardContent>
-            <div className="flex flex-col items-center justify-center h-64">
-              <Loader2 className="h-12 w-12 animate-spin text-primary mb-4" />
-              {isAddingContacts && syncProgress ? (
-                <>
-                  <p className="text-lg font-medium text-center mb-2">
-                    Syncing {syncProgress.currentContact || "contacts"}...
-                  </p>
-                  <div className="w-full max-w-md bg-gray-200 rounded-full h-2.5 mb-2">
-                    <div
-                      className="bg-primary h-2.5 rounded-full transition-all duration-300"
-                      style={{
-                        width: `${(syncProgress.processed / syncProgress.total) * 100}%`,
-                      }}
-                    />
-                  </div>
-                  <p className="text-sm text-muted-foreground">
-                    {syncProgress.processed} of {syncProgress.total} contacts
-                    processed
-                  </p>
-                </>
-              ) : (
-                <p className="text-lg font-medium text-center">
-                  Loading contacts...
-                </p>
-              )}
-            </div>
-          </CardContent>
-        </Card>
-      </main>
-    );
-  }
-
   return (
-    <main className="container mx-auto py-8">
-      <Card className="w-full max-w-4xl mx-auto">
-        <CardHeader className="flex flex-row items-center justify-between">
-          <div>
-            <CardTitle>Your Contacts</CardTitle>
-            <CardDescription>
-              View and manage your WhatsApp contacts
-            </CardDescription>
-          </div>
-          <Button
-            variant="destructive"
-            size="sm"
-            onClick={handleDisconnect}
-            className="flex items-center gap-2"
-          >
-            <LogOut className="h-4 w-4" />
-            Disconnect
-          </Button>
+    <div className="container mx-auto py-8">
+      {isAddingContacts && syncProgress && (
+        <div className="mb-4">
+          <Card>
+            <CardHeader>
+              <CardTitle className="flex items-center gap-2">
+                <Loader2 className="h-4 w-4 animate-spin" />
+                Syncing Contacts
+              </CardTitle>
+              <CardDescription>
+                Processing {syncProgress.currentContact || "contacts"}...
+              </CardDescription>
+            </CardHeader>
+            <CardContent>
+              <div className="space-y-2">
+                <div className="flex justify-between text-sm">
+                  <span className="text-muted-foreground">
+                    Progress: {syncProgress.processed} of {syncProgress.total}
+                  </span>
+                  <span className="text-muted-foreground">
+                    {Math.round(
+                      (syncProgress.processed / syncProgress.total) * 100
+                    )}
+                    %
+                  </span>
+                </div>
+                <div className="h-2 w-full rounded-full bg-muted">
+                  <div
+                    className="h-2 rounded-full bg-primary transition-all duration-300"
+                    style={{
+                      width: `${(syncProgress.processed / syncProgress.total) * 100}%`,
+                    }}
+                  />
+                </div>
+              </div>
+            </CardContent>
+          </Card>
+        </div>
+      )}
+      <Card>
+        <CardHeader>
+          <CardTitle>Contacts</CardTitle>
+          <CardDescription>
+            {isAddingContacts
+              ? "Syncing your WhatsApp contacts..."
+              : "View and manage your contacts"}
+          </CardDescription>
         </CardHeader>
         <CardContent>
-          <div className="mb-6 flex gap-4">
-            <div className="relative flex-1">
-              <Search className="absolute left-3 top-1/2 transform -translate-y-1/2 h-4 w-4 text-muted-foreground" />
+          <div className="mb-4 flex items-center justify-between">
+            <div className="flex items-center gap-2">
               <Input
                 placeholder="Search contacts..."
-                className="pl-10"
                 value={searchQuery}
                 onChange={(e) => setSearchQuery(e.target.value)}
+                className="w-[300px]"
               />
+              <Button variant="outline" size="icon" onClick={handleReload}>
+                <RefreshCw className="h-4 w-4" />
+              </Button>
             </div>
-            <Select
-              value={sorting[0]?.id || "name"}
-              onValueChange={(value: string) => {
-                setSorting([{ id: value, desc: sorting[0]?.desc || false }]);
-              }}
-            >
-              <SelectTrigger className="w-[180px]">
-                <SelectValue placeholder="Sort by" />
-              </SelectTrigger>
-              <SelectContent>
-                <SelectItem value="name">Name</SelectItem>
-                <SelectItem value="createdAt">Created At</SelectItem>
-                <SelectItem value="messageCount">Message Count</SelectItem>
-              </SelectContent>
-            </Select>
             <Button
-              variant="outline"
-              size="icon"
-              onClick={() => {
-                setSorting([
-                  { id: sorting[0]?.id || "name", desc: !sorting[0]?.desc },
-                ]);
-              }}
+              variant="destructive"
+              onClick={handleDisconnect}
+              className="flex items-center gap-2"
             >
-              {sorting[0]?.desc ? (
-                <SortDesc className="h-4 w-4" />
-              ) : (
-                <SortAsc className="h-4 w-4" />
-              )}
+              <LogOut className="h-4 w-4" />
+              Disconnect
             </Button>
           </div>
 
-          <div className="mb-4 flex items-center justify-between">
-            <p className="text-sm text-muted-foreground">
-              <UserCheck className="inline-block mr-1 h-4 w-4" />
-              {totalContacts} contacts synced
-            </p>
+          <div className="relative">
+            <div className="rounded-md border">
+              <Table>
+                <TableHeader>
+                  {table.getHeaderGroups().map((headerGroup) => (
+                    <TableRow key={headerGroup.id}>
+                      {headerGroup.headers.map((header) => (
+                        <TableHead key={header.id}>
+                          {header.isPlaceholder
+                            ? null
+                            : flexRender(
+                                header.column.columnDef.header,
+                                header.getContext()
+                              )}
+                        </TableHead>
+                      ))}
+                    </TableRow>
+                  ))}
+                </TableHeader>
+                <TableBody>
+                  {table.getRowModel().rows?.length ? (
+                    table.getRowModel().rows.map((row) => (
+                      <TableRow
+                        key={row.id}
+                        data-state={row.getIsSelected() && "selected"}
+                      >
+                        {row.getVisibleCells().map((cell) => (
+                          <TableCell key={cell.id}>
+                            {flexRender(
+                              cell.column.columnDef.cell,
+                              cell.getContext()
+                            )}
+                          </TableCell>
+                        ))}
+                      </TableRow>
+                    ))
+                  ) : (
+                    <TableRow>
+                      <TableCell
+                        colSpan={columns.length}
+                        className="h-24 text-center"
+                      >
+                        No contacts found.
+                      </TableCell>
+                    </TableRow>
+                  )}
+                </TableBody>
+              </Table>
+            </div>
           </div>
 
-          {contacts.length === 0 ? (
-            <div className="text-center py-8 text-muted-foreground">
-              No contacts found
+          <div className="flex items-center justify-between mt-4">
+            <div className="flex items-center gap-2">
+              <span className="text-sm text-muted-foreground">Show:</span>
+              <Select
+                value={pageSize.toString()}
+                onValueChange={handlePageSizeChange}
+              >
+                <SelectTrigger className="w-[80px]">
+                  <SelectValue placeholder={pageSize.toString()} />
+                </SelectTrigger>
+                <SelectContent>
+                  {pageSizeOptions.map((size) => (
+                    <SelectItem key={size} value={size}>
+                      {size}
+                    </SelectItem>
+                  ))}
+                </SelectContent>
+              </Select>
             </div>
-          ) : (
-            <>
-              <div className="rounded-md border">
-                <Table>
-                  <TableHeader>
-                    {table.getHeaderGroups().map((headerGroup) => (
-                      <TableRow key={headerGroup.id}>
-                        {headerGroup.headers.map((header) => (
-                          <TableHead key={header.id}>
-                            {header.isPlaceholder
-                              ? null
-                              : flexRender(
-                                  header.column.columnDef.header,
-                                  header.getContext()
-                                )}
-                          </TableHead>
-                        ))}
-                      </TableRow>
-                    ))}
-                  </TableHeader>
-                  <TableBody>
-                    {table.getRowModel().rows.length ? (
-                      table.getRowModel().rows.map((row) => (
-                        <TableRow
-                          key={row.id}
-                          data-state={row.getIsSelected() && "selected"}
-                        >
-                          {row.getVisibleCells().map((cell) => (
-                            <TableCell key={cell.id}>
-                              {flexRender(
-                                cell.column.columnDef.cell,
-                                cell.getContext()
-                              )}
-                            </TableCell>
-                          ))}
-                        </TableRow>
-                      ))
-                    ) : (
-                      <TableRow>
-                        <TableCell
-                          colSpan={columns.length}
-                          className="h-24 text-center"
-                        >
-                          No results.
-                        </TableCell>
-                      </TableRow>
-                    )}
-                  </TableBody>
-                </Table>
-              </div>
-
-              {/* Pagination and Page Size Controls */}
-              <div className="mt-6 flex flex-col space-y-3">
-                <div className="flex items-center justify-between">
-                  <div className="flex items-center space-x-2">
-                    <span className="text-sm text-muted-foreground">Show:</span>
-                    <Select
-                      value={pageSize.toString()}
-                      onValueChange={handlePageSizeChange}
-                    >
-                      <SelectTrigger className="h-8 w-[80px]">
-                        <SelectValue placeholder={pageSize.toString()} />
-                      </SelectTrigger>
-                      <SelectContent>
-                        {pageSizeOptions.map((size) => (
-                          <SelectItem key={size} value={size}>
-                            {size}
-                          </SelectItem>
-                        ))}
-                      </SelectContent>
-                    </Select>
-                  </div>
-
-                  <span className="text-sm text-muted-foreground">
-                    Showing page {currentPage} of {totalPages}
-                  </span>
-                </div>
-
-                {totalPages > 1 && (
-                  <div className="flex items-center justify-between">
+            <div className="flex items-center gap-2">
+              <Button
+                variant="outline"
+                size="icon"
+                onClick={goToPreviousPage}
+                disabled={currentPage === 1}
+              >
+                <ChevronLeft className="h-4 w-4" />
+              </Button>
+              <div className="flex items-center gap-1">
+                {getPageNumbers().map((page, index) =>
+                  page === "..." ? (
+                    <span key={`ellipsis-${index}`} className="px-2">
+                      ...
+                    </span>
+                  ) : (
                     <Button
-                      variant="outline"
-                      size="sm"
-                      onClick={goToPreviousPage}
-                      disabled={currentPage === 1}
-                      className="h-8"
+                      key={page}
+                      variant={currentPage === page ? "default" : "outline"}
+                      size="icon"
+                      onClick={() => goToPage(page as number)}
                     >
-                      <ChevronLeft className="h-4 w-4 mr-1" />
-                      Previous
+                      {page}
                     </Button>
-
-                    <div className="flex items-center gap-1">
-                      {getPageNumbers().map((page, index) =>
-                        page === "..." ? (
-                          <span key={`ellipsis-${index}`} className="px-2">
-                            ...
-                          </span>
-                        ) : (
-                          <Button
-                            key={page}
-                            variant={
-                              currentPage === page ? "default" : "outline"
-                            }
-                            size="sm"
-                            onClick={() => goToPage(page as number)}
-                            className="h-8 w-8 p-0"
-                          >
-                            {page}
-                          </Button>
-                        )
-                      )}
-                    </div>
-
-                    <Button
-                      variant="outline"
-                      size="sm"
-                      onClick={goToNextPage}
-                      disabled={currentPage === totalPages}
-                      className="h-8"
-                    >
-                      Next
-                      <ChevronRight className="h-4 w-4 ml-1" />
-                    </Button>
-                  </div>
+                  )
                 )}
               </div>
-            </>
-          )}
+              <Button
+                variant="outline"
+                size="icon"
+                onClick={goToNextPage}
+                disabled={currentPage === totalPages}
+              >
+                <ChevronRight className="h-4 w-4" />
+              </Button>
+            </div>
+          </div>
         </CardContent>
       </Card>
-    </main>
+    </div>
   );
 }

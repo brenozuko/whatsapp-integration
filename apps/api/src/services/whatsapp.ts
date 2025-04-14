@@ -6,7 +6,6 @@ import {
   WhatsAppStatus,
 } from "../lib/socket";
 
-// Single client state
 let client: Client | null = null;
 let qrCode: string | null = null;
 let connectionState: "loading" | "ready" | "disconnected" | "error" =
@@ -38,51 +37,66 @@ const saveContacts = async () => {
     });
 
     const contacts = await client.getContacts();
-    const contactData = [];
-
     contactsSyncProgress.total = contacts.length;
     emitContactsStatus({
       isAddingContacts: true,
       syncProgress: contactsSyncProgress,
     });
 
+    const BATCH_SIZE = 50;
+    const contactData = [];
+
     for (const contact of contacts) {
-      if (!contact.name && !contact.pushname) continue;
+      try {
+        if (!contact.name && !contact.pushname) continue;
 
-      contactsSyncProgress.currentContact =
-        contact.name || contact.pushname || contact.number;
-      contactsSyncProgress.processed++;
-      emitContactsStatus({
-        isAddingContacts: true,
-        syncProgress: contactsSyncProgress,
-      });
+        contactsSyncProgress.currentContact =
+          contact.name || contact.pushname || contact.number;
+        emitContactsStatus({
+          isAddingContacts: true,
+          syncProgress: contactsSyncProgress,
+        });
 
-      const chat = await contact?.getChat();
-      const messages = (await chat?.fetchMessages({})) || [];
-      const profilePicture = await contact.getProfilePicUrl();
+        const profilePicture = await contact.getProfilePicUrl();
 
-      contactData.push({
-        name: contact.name || contact.pushname,
-        phone: contact.number,
-        profilePicture,
-        messageCount: messages.length,
-        lastMessageDate: messages[0]?.timestamp
-          ? new Date(messages[0].timestamp * 1000)
-          : new Date(),
+        contactData.push({
+          name: contact.name || contact.pushname,
+          phone: contact.number,
+          profilePicture,
+          messageCount: 0,
+          lastMessageDate: new Date(),
+        });
+
+        contactsSyncProgress.processed++;
+        emitContactsStatus({
+          isAddingContacts: true,
+          syncProgress: contactsSyncProgress,
+        });
+
+        // Process in batches to avoid memory issues
+        if (contactData.length >= BATCH_SIZE) {
+          await prisma.contact.createMany({
+            data: contactData,
+            skipDuplicates: true,
+          });
+          contactData.length = 0; // Clear the array
+        }
+      } catch (error) {
+        console.error(`Error processing contact ${contact.number}:`, error);
+        // Continue with next contact even if one fails
+      }
+    }
+
+    // Process any remaining contacts
+    if (contactData.length > 0) {
+      await prisma.contact.createMany({
+        data: contactData,
+        skipDuplicates: true,
       });
     }
 
-    // Delete all existing contacts
-    await prisma.contact.deleteMany({});
-
-    // Create all contacts in bulk
-    await prisma.contact.createMany({
-      data: contactData,
-      skipDuplicates: true,
-    });
-
     console.log(
-      `Successfully saved ${contactData.length} contacts to the database`
+      `Successfully saved ${contactsSyncProgress.processed} contacts to the database`
     );
   } catch (error) {
     console.error("Error saving contacts:", error);

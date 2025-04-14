@@ -33,7 +33,7 @@ export const getContacts = async ({
       where,
       skip,
       take: limit,
-      orderBy: { lastMessageDate: "desc" },
+      orderBy: { name: "asc" },
     }),
     prisma.contact.count({ where }),
   ]);

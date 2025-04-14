@@ -12,12 +12,10 @@ datasource db {
 }
 
 model Contact {
-    id              String    @id @default(uuid())
-    name            String
-    phone           String    @unique
-    profilePicture  String?
-    messageCount    Int       @default(0)
-    lastMessageDate DateTime?
-    createdAt       DateTime  @default(now())
-    updatedAt       DateTime  @updatedAt
+    id             String   @id @default(uuid())
+    name           String
+    phone          String   @unique
+    profilePicture String?
+    createdAt      DateTime @default(now())
+    updatedAt      DateTime @updatedAt
 }

@@ -21,25 +21,15 @@ const fetchContacts = async ({
   page,
   pageSize,
   searchQuery,
-  sorting,
 }: {
   page: number;
   pageSize: number;
   searchQuery: string;
   sorting: SortingState;
 }) => {
-  let sortParam = "";
-
   const integrationId = localStorage.getItem("whatsappIntegrationId");
 
   let url = `${import.meta.env.VITE_API_BASE_URL}/contacts?integrationId=${integrationId}`;
-
-  if (sorting.length > 0) {
-    const { id, desc } = sorting[0];
-    sortParam = `&sortBy=${id}&sortOrder=${desc ? "desc" : "asc"}`;
-
-    url += sortParam;
-  }
 
   if (page) {
     url += `&page=${page}`;
@@ -79,7 +69,5 @@ export const useContacts = ({
         searchQuery,
         sorting,
       }),
-    staleTime: 5000,
-    refetchOnWindowFocus: false,
   });
 };
