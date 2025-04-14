@@ -92,7 +92,7 @@ function Index() {
 
   useEffect(() => {
     // Fetch initial status
-    fetch("http://localhost:3000/whatsapp/connect")
+    fetch("http://localhost:3000/connect")
       .then((res) => res.json())
       .then((data) => {
         setStatus((prev) => ({ ...prev, ...data }));

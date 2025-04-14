@@ -4,7 +4,7 @@ import { createServer } from "./server";
 import { getContacts } from "./services/contacts";
 import {
   getConnectionState,
-  getCurrentIntegration,
+  getCurrentUser,
   getIsAddingContacts,
   getIsAddingMessages,
   getQrCode,
@@ -27,14 +27,11 @@ initializeWhatsApp().catch((err) => {
 app.get("/connect", async (_, res) => {
   try {
     const client = await initializeWhatsApp();
-    const currentIntegration = getCurrentIntegration();
 
     return res.json({
       qrCode: getQrCode(),
       isConnected: client?.info ? true : false,
       connectionState: getConnectionState(),
-      userName: currentIntegration?.userName,
-      userPhone: currentIntegration?.userPhone,
     });
   } catch (error) {
     console.error("Error connecting to WhatsApp:", error);
@@ -51,13 +48,13 @@ app.get("/contacts-status", (_, res) => {
 
 // Get the current integration information
 app.get("/integration", (_, res) => {
-  const integration = getCurrentIntegration();
-  if (!integration) {
+  const currentUser = getCurrentUser();
+  if (!currentUser) {
     return res
       .status(404)
-      .json({ error: "No integration is currently connected" });
+      .json({ error: "No WhatsApp connection is currently active" });
   }
-  return res.json(integration);
+  return res.json(currentUser);
 });
 
 app.get("/contacts", async (req, res) => {
@@ -70,26 +67,19 @@ app.get("/contacts", async (req, res) => {
       : undefined;
     const search = req.query.search as string | undefined;
 
-    // Get the current integration to filter contacts
-    const currentIntegration = getCurrentIntegration();
-    if (!currentIntegration) {
+    // Check if WhatsApp is connected
+    const currentUser = getCurrentUser();
+    if (!currentUser) {
       return res
         .status(401)
-        .json({ error: "No integration is currently connected" });
+        .json({ error: "No WhatsApp connection is currently active" });
     }
 
-    // Check if currentIntegration has a valid ID property
-    const integrationId = currentIntegration.id;
-    if (!integrationId) {
-      return res.status(500).json({ error: "Invalid integration ID" });
-    }
-
-    // Pass the integration ID to filter contacts
+    // Pass search parameters only
     const result = await getContacts({
       page,
       pageSize,
       search,
-      integrationId,
     });
 
     return res.json(result);

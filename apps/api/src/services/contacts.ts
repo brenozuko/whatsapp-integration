@@ -5,7 +5,6 @@ interface GetContactsParams {
   page?: number;
   pageSize?: number;
   search?: string;
-  integrationId?: string;
 }
 
 interface GetContactsResponse {
@@ -20,7 +19,6 @@ export async function getContacts({
   page = 1,
   pageSize = 10,
   search,
-  integrationId,
 }: GetContactsParams = {}): Promise<GetContactsResponse> {
   const skip = (page - 1) * pageSize;
 
@@ -31,9 +29,6 @@ export async function getContacts({
         contains: search,
         mode: "insensitive" as const,
       },
-    }),
-    ...(integrationId && {
-      integrationId,
     }),
   };
 

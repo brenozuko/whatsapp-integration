@@ -3,6 +3,7 @@
 
 generator client {
     provider = "prisma-client-js"
+    output   = "./generated"
 }
 
 datasource db {
@@ -10,46 +11,27 @@ datasource db {
     url      = env("DATABASE_URL")
 }
 
-model Integration {
-    id             String    @id @default(uuid())
-    userName       String
-    userPhone      String    @unique
-    whatsappId     String?
-    isConnected    Boolean   @default(false)
-    lastConnection DateTime?
-    contacts       Contact[]
-    createdAt      DateTime  @default(now())
-    updatedAt      DateTime  @updatedAt
-    Message        Message[]
-}
-
 model Contact {
-    id              String      @id @default(uuid())
+    id              String    @id @default(uuid())
     name            String
-    phone           String
-    messageCount    Int         @default(0)
+    phone           String    @unique
+    messageCount    Int       @default(0)
     lastMessageDate DateTime?
-    integration     Integration @relation(fields: [integrationId], references: [id], onDelete: Cascade)
-    integrationId   String
     messages        Message[]
-    createdAt       DateTime    @default(now())
-    updatedAt       DateTime    @updatedAt
-
-    @@unique([phone, integrationId])
+    createdAt       DateTime  @default(now())
+    updatedAt       DateTime  @updatedAt
 }
 
 model Message {
-    id            String      @id @default(uuid())
-    messageId     String      @unique
-    body          String
-    from          String
-    to            String
-    fromMe        Boolean
-    contact       Contact     @relation(fields: [contactId], references: [id], onDelete: Cascade)
-    contactId     String
-    integration   Integration @relation(fields: [integrationId], references: [id], onDelete: Cascade)
-    integrationId String
-    timestamp     DateTime
-    createdAt     DateTime    @default(now())
-    updatedAt     DateTime    @updatedAt
+    id        String   @id @default(uuid())
+    messageId String   @unique
+    body      String
+    from      String
+    to        String
+    fromMe    Boolean
+    contact   Contact  @relation(fields: [contactId], references: [id], onDelete: Cascade)
+    contactId String
+    timestamp DateTime
+    createdAt DateTime @default(now())
+    updatedAt DateTime @updatedAt
 }

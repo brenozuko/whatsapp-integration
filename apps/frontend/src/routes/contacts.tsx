@@ -58,7 +58,7 @@ function Contacts() {
   useEffect(() => {
     const fetchContacts = async () => {
       try {
-        const response = await fetch(`http://localhost:3000/whatsapp/contacts`);
+        const response = await fetch(`http://localhost:3000/contacts`);
         const data = await response.json();
         setContacts(data.contacts || data);
       } catch (error) {
@@ -69,7 +69,7 @@ function Contacts() {
     };
 
     // Check initial contacts loading status
-    fetch("http://localhost:3000/whatsapp/contacts-status")
+    fetch("http://localhost:3000/contacts-status")
       .then((res) => res.json())
       .then((data) => {
         setIsAddingContacts(data.isAddingContacts);
