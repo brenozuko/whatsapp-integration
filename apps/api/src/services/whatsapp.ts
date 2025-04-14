@@ -52,8 +52,8 @@ const saveContacts = async (client: Client, integrationId: string) => {
     const contacts = await client.getContacts();
 
     for (const contact of contacts) {
-      const chat = await contact.getChat();
-      const messages = await chat.fetchMessages({});
+      const chat = await contact?.getChat();
+      const messages = await chat?.fetchMessages({});
 
       await prisma.contact.upsert({
         where: {

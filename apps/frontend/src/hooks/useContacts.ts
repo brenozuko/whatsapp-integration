@@ -29,14 +29,34 @@ const fetchContacts = async ({
   sorting: SortingState;
 }) => {
   let sortParam = "";
+
+  const integrationId = localStorage.getItem("whatsappIntegrationId");
+
+  let url = `${import.meta.env.VITE_API_BASE_URL}/contacts?integrationId=${integrationId}`;
+
   if (sorting.length > 0) {
     const { id, desc } = sorting[0];
     sortParam = `&sortBy=${id}&sortOrder=${desc ? "desc" : "asc"}`;
   }
 
-  const response = await fetch(
-    `http://localhost:3000/contacts?page=${page}&pageSize=${pageSize}&search=${searchQuery}${sortParam}`
-  );
+  if (!integrationId) {
+    throw new Error("No integration ID found");
+  }
+
+  if (page) {
+    url += `&page=${page}`;
+  }
+
+  if (pageSize) {
+    url += `&pageSize=${pageSize}`;
+  }
+
+  if (searchQuery) {
+    url += `&search=${searchQuery}`;
+  }
+
+  const response = await fetch(url);
+
   const data: ContactsResponse = await response.json();
   return data;
 };

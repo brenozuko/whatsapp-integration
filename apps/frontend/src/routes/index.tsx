@@ -7,6 +7,7 @@ import {
   CardHeader,
   CardTitle,
 } from "@/components/ui/card";
+import { useWhatsAppConnection } from "@/hooks/useWhatsAppConnection";
 import { cn } from "@/lib/utils";
 import { createFileRoute, Link } from "@tanstack/react-router";
 import {
@@ -16,8 +17,6 @@ import {
   MessageSquare,
   Users,
 } from "lucide-react";
-import { useEffect, useState } from "react";
-import socketService from "../lib/socket";
 
 // Connection status component
 const ConnectionStatus = ({
@@ -78,49 +77,7 @@ export const Route = createFileRoute("/")({
 });
 
 function Index() {
-  const [status, setStatus] = useState<{
-    qrCode: string | null;
-    isConnected: boolean;
-    connectionState: "loading" | "ready" | "disconnected" | "error";
-    isAddingContacts: boolean;
-  }>({
-    qrCode: null,
-    isConnected: false,
-    connectionState: "loading",
-    isAddingContacts: false,
-  });
-
-  useEffect(() => {
-    // Fetch initial status
-    fetch("http://localhost:3000/connect")
-      .then((res) => res.json())
-      .then((data) => {
-        setStatus((prev) => ({ ...prev, ...data }));
-      })
-      .catch((error) => {
-        console.error("Error fetching WhatsApp status:", error);
-      });
-
-    // Listen for WhatsApp status updates using socket service
-    const unsubscribeStatus = socketService.onWhatsAppStatus((data) => {
-      setStatus((prev) => ({ ...prev, ...data }));
-    });
-
-    // Listen for contacts status updates
-    const unsubscribeContacts = socketService.onContactsStatus((data) => {
-      setStatus((prev) => ({ ...prev, ...data }));
-      if (data.isAddingContacts) {
-        // If contacts are being added, navigate to contacts page
-        window.location.href = "/contacts";
-      }
-    });
-
-    // Cleanup on unmount
-    return () => {
-      unsubscribeStatus();
-      unsubscribeContacts();
-    };
-  }, []);
+  const status = useWhatsAppConnection();
 
   const renderQRCode = () => {
     if (status.isConnected) {
