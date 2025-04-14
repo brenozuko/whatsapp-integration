@@ -15,6 +15,13 @@ let isAddingMessages = false;
 
 let isConnected = false;
 
+const isPhoneNumber = (str: string): boolean => {
+  // Remove any non-digit characters
+  const digits = str.replace(/\D/g, "");
+  // Check if the string contains only digits and has a reasonable length for a phone number
+  return /^\d+$/.test(digits) && digits.length >= 8 && digits.length <= 15;
+};
+
 const saveContacts = async (client: Client) => {
   try {
     isAddingContacts = true;
@@ -38,6 +45,17 @@ const saveContacts = async (client: Client) => {
 
     for (const contact of contacts) {
       if (contact.number) {
+        // Skip contacts without a valid name or if pushname is a phone number
+        if (
+          !contact.name ||
+          (contact.pushname && isPhoneNumber(contact.pushname))
+        ) {
+          console.log(
+            `Skipping contact ${contact.number} - no valid name or pushname is a phone number`
+          );
+          continue;
+        }
+
         // Check if we have a chat with this contact
         const chat = chatMap.get(contact.number);
         let messageCount = 0;
@@ -77,13 +95,13 @@ const saveContacts = async (client: Client) => {
             phone: contact.number,
           },
           update: {
-            name: contact.name || contact.pushname || "",
+            name: contact.name,
             profilePicture: await contact.getProfilePicUrl(),
             messageCount,
             lastMessageDate,
           },
           create: {
-            name: contact.name || contact.pushname || "",
+            name: contact.name,
             phone: contact.number,
             profilePicture: await contact.getProfilePicUrl(),
             messageCount,
@@ -93,9 +111,7 @@ const saveContacts = async (client: Client) => {
       }
     }
 
-    console.log(
-      `Successfully saved ${contacts.length} contacts to the database for user`
-    );
+    console.log(`Successfully saved contacts to the database for user`);
   } catch (error) {
     console.error("Error saving contacts:", error);
   } finally {

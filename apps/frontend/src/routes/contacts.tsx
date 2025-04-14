@@ -23,10 +23,11 @@ import {
   TableHeader,
   TableRow,
 } from "@/components/ui/table";
-import { useContacts } from "@/hooks/useContacts";
+import { Contact, useContacts } from "@/hooks/useContacts";
+import { useDebounce } from "@/hooks/useDebounce";
 import { createFileRoute } from "@tanstack/react-router";
 import {
-  ColumnDef,
+  AccessorColumnDef,
   flexRender,
   getCoreRowModel,
   Row,
@@ -44,40 +45,23 @@ import {
   UserCheck,
 } from "lucide-react";
 import { useState } from "react";
-
-interface Contact {
-  id: string;
-  name: string;
-  phone: string;
-  image: string;
-  lastInteraction: string;
-  messageCount: number;
-}
-
-interface ContactsResponse {
-  contacts: Contact[];
-  total: number;
-  page: number;
-  pageSize: number;
-  totalPages: number;
-}
-
 export const Route = createFileRoute("/contacts")({
   component: Contacts,
 });
 
 function Contacts() {
   const [searchQuery, setSearchQuery] = useState("");
+  const debouncedSearchQuery = useDebounce(searchQuery, 300);
   const [currentPage, setCurrentPage] = useState(1);
   const [pageSize, setPageSize] = useState<number>(10);
   const [sorting, setSorting] = useState<SortingState>([
-    { id: "lastInteraction", desc: true },
+    { id: "createdAt", desc: true },
   ]);
 
   const { data, isLoading } = useContacts({
     page: currentPage,
     pageSize,
-    searchQuery,
+    searchQuery: debouncedSearchQuery,
     sorting,
   });
 
@@ -146,16 +130,6 @@ function Contacts() {
     }
   };
 
-  // Format date helper function
-  const formatDate = (dateString: string) => {
-    const date = new Date(dateString);
-    return date.toLocaleDateString("en-US", {
-      month: "short",
-      day: "numeric",
-      year: "numeric",
-    });
-  };
-
   // Handle page size change
   const handlePageSizeChange = (value: string) => {
     setPageSize(Number.parseInt(value));
@@ -164,15 +138,15 @@ function Contacts() {
   const pageSizeOptions = ["5", "10", "20", "50"];
 
   // Define table columns
-  const columns: ColumnDef<Contact>[] = [
+  const columns: AccessorColumnDef<Contact>[] = [
     {
-      accessorKey: "image",
+      accessorKey: "profilePicture",
       header: "",
       cell: ({ row }: { row: Row<Contact> }) => {
         const contact = row.original;
         return (
           <Avatar className="h-10 w-10 bg-green-100">
-            <AvatarImage src={contact.image} alt={contact.name} />
+            <AvatarImage src={contact.profilePicture} alt={contact.name} />
             <AvatarFallback className="bg-green-100 text-green-700 font-medium">
               {contact.name.charAt(0).toUpperCase()}
             </AvatarFallback>
@@ -187,12 +161,6 @@ function Contacts() {
     {
       accessorKey: "phone",
       header: "Phone",
-    },
-    {
-      accessorKey: "lastInteraction",
-      header: "Last Interaction",
-      cell: ({ row }: { row: Row<Contact> }) =>
-        formatDate(row.getValue("lastInteraction")),
     },
     {
       accessorKey: "messageCount",
@@ -213,7 +181,7 @@ function Contacts() {
   // Initialize the table
   const table = useReactTable({
     data: contacts,
-    columns,
+    columns: columns,
     getCoreRowModel: getCoreRowModel(),
     manualPagination: true,
     pageCount: totalPages,
@@ -274,9 +242,7 @@ function Contacts() {
               </SelectTrigger>
               <SelectContent>
                 <SelectItem value="name">Name</SelectItem>
-                <SelectItem value="lastInteraction">
-                  Last Interaction
-                </SelectItem>
+                <SelectItem value="createdAt">Created At</SelectItem>
                 <SelectItem value="messageCount">Message Count</SelectItem>
               </SelectContent>
             </Select>

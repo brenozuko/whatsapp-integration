@@ -1,12 +1,11 @@
 import { useQuery } from "@tanstack/react-query";
 import { SortingState } from "@tanstack/react-table";
 
-interface Contact {
+export interface Contact {
   id: string;
   name: string;
   phone: string;
-  image: string;
-  lastInteraction: string;
+  profilePicture: string;
   messageCount: number;
 }
 
