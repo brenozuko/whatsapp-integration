@@ -37,10 +37,8 @@ const fetchContacts = async ({
   if (sorting.length > 0) {
     const { id, desc } = sorting[0];
     sortParam = `&sortBy=${id}&sortOrder=${desc ? "desc" : "asc"}`;
-  }
 
-  if (!integrationId) {
-    throw new Error("No integration ID found");
+    url += sortParam;
   }
 
   if (page) {

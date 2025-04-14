@@ -52,20 +52,23 @@ app.get("/contacts-status", (req, res) => {
 app.get("/contacts", async (req, res) => {
   try {
     const validatedQuery = contactsQuerySchema.parse(req.query);
-    const { integrationId } = req.query;
 
-    if (!integrationId || typeof integrationId !== "string") {
+    if (
+      !validatedQuery.integrationId ||
+      typeof validatedQuery.integrationId !== "string"
+    ) {
       return res.status(400).json({ error: "integrationId is required" });
     }
 
-    const currentUser = getCurrentUser(integrationId);
+    const currentUser = getCurrentUser(validatedQuery.integrationId);
+
     if (!currentUser) {
       return res
         .status(401)
         .json({ error: "No WhatsApp connection is currently active" });
     }
 
-    const result = await getContacts({ ...validatedQuery, integrationId });
+    const result = await getContacts({ ...validatedQuery });
 
     return res.json(result);
   } catch (error) {
