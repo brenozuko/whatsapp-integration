@@ -5,6 +5,8 @@ interface GetContactsParams {
   page?: number;
   pageSize?: number;
   search?: string;
+  sortBy?: "name" | "createdAt" | "messageCount";
+  sortOrder?: "asc" | "desc";
 }
 
 interface GetContactsResponse {
@@ -19,6 +21,8 @@ export async function getContacts({
   page = 1,
   pageSize = 10,
   search,
+  sortBy = "name",
+  sortOrder = "asc",
 }: GetContactsParams = {}): Promise<GetContactsResponse> {
   const skip = (page - 1) * pageSize;
 
@@ -37,8 +41,22 @@ export async function getContacts({
       where,
       skip,
       take: pageSize,
-      orderBy: {
-        name: "asc",
+      orderBy:
+        sortBy === "messageCount"
+          ? {
+              messages: {
+                _count: sortOrder,
+              },
+            }
+          : {
+              [sortBy]: sortOrder,
+            },
+      include: {
+        _count: {
+          select: {
+            messages: true,
+          },
+        },
       },
     }),
     prisma.contact.count({ where }),

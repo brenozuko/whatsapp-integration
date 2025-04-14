@@ -1,4 +1,5 @@
 import http from "http";
+import { z } from "zod";
 import { initializeSocket } from "./lib/socket";
 import { createServer } from "./server";
 import { getContacts } from "./services/contacts";
@@ -10,6 +11,7 @@ import {
   getQrCode,
   initializeWhatsApp,
 } from "./services/whatsapp";
+import { contactsQuerySchema } from "./validations";
 
 const port = process.env.PORT || 3000;
 const app = createServer();
@@ -59,13 +61,8 @@ app.get("/integration", (_, res) => {
 
 app.get("/contacts", async (req, res) => {
   try {
-    const page = req.query.page
-      ? parseInt(req.query.page as string)
-      : undefined;
-    const pageSize = req.query.pageSize
-      ? parseInt(req.query.pageSize as string)
-      : undefined;
-    const search = req.query.search as string | undefined;
+    // Validate query parameters
+    const validatedQuery = contactsQuerySchema.parse(req.query);
 
     // Check if WhatsApp is connected
     const currentUser = getCurrentUser();
@@ -75,15 +72,17 @@ app.get("/contacts", async (req, res) => {
         .json({ error: "No WhatsApp connection is currently active" });
     }
 
-    // Pass search parameters only
-    const result = await getContacts({
-      page,
-      pageSize,
-      search,
-    });
+    // Pass validated query parameters
+    const result = await getContacts(validatedQuery);
 
     return res.json(result);
   } catch (error) {
+    if (error instanceof z.ZodError) {
+      return res.status(400).json({
+        error: "Invalid query parameters",
+        details: error.errors,
+      });
+    }
     console.error("Error fetching contacts:", error);
     return res.status(500).json({ error: "Failed to fetch contacts" });
   }

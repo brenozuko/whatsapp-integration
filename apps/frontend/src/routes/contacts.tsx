@@ -7,12 +7,6 @@ import {
   CardHeader,
   CardTitle,
 } from "@/components/ui/card";
-import {
-  DropdownMenu,
-  DropdownMenuContent,
-  DropdownMenuItem,
-  DropdownMenuTrigger,
-} from "@/components/ui/dropdown-menu";
 import { Input } from "@/components/ui/input";
 import {
   Select,
@@ -21,10 +15,25 @@ import {
   SelectTrigger,
   SelectValue,
 } from "@/components/ui/select";
+import {
+  Table,
+  TableBody,
+  TableCell,
+  TableHead,
+  TableHeader,
+  TableRow,
+} from "@/components/ui/table";
+import { useContacts } from "@/hooks/useContacts";
 import { createFileRoute } from "@tanstack/react-router";
 import {
-  ArrowUpDown,
-  Calendar,
+  ColumnDef,
+  flexRender,
+  getCoreRowModel,
+  Row,
+  SortingState,
+  useReactTable,
+} from "@tanstack/react-table";
+import {
   ChevronLeft,
   ChevronRight,
   Loader2,
@@ -34,8 +43,7 @@ import {
   SortDesc,
   UserCheck,
 } from "lucide-react";
-import { useEffect, useState } from "react";
-import socketService from "../lib/socket";
+import { useState } from "react";
 
 interface Contact {
   id: string;
@@ -54,117 +62,78 @@ interface ContactsResponse {
   totalPages: number;
 }
 
-type SortOption = {
-  label: string;
-  value: string;
-  icon: React.ReactNode;
-};
-
-const sortOptions: SortOption[] = [
-  {
-    label: "Recent first",
-    value: "recent",
-    icon: <SortDesc className="h-4 w-4 mr-2" />,
-  },
-  {
-    label: "Oldest first",
-    value: "oldest",
-    icon: <SortAsc className="h-4 w-4 mr-2" />,
-  },
-  {
-    label: "Name (A-Z)",
-    value: "name",
-    icon: <ArrowUpDown className="h-4 w-4 mr-2" />,
-  },
-  {
-    label: "Most messages",
-    value: "messages",
-    icon: <MessageSquare className="h-4 w-4 mr-2" />,
-  },
-];
-
 export const Route = createFileRoute("/contacts")({
   component: Contacts,
 });
 
 function Contacts() {
-  const [contacts, setContacts] = useState<Contact[]>([]);
-  const [loading, setLoading] = useState(true);
-  const [isAddingContacts, setIsAddingContacts] = useState(false);
   const [searchQuery, setSearchQuery] = useState("");
   const [currentPage, setCurrentPage] = useState(1);
-  const [pageSize, setPageSize] = useState<number | string>(10);
-  const [totalPages, setTotalPages] = useState(1);
-  const [totalContacts, setTotalContacts] = useState(0);
-  const [sortBy, setSortBy] = useState<string>("recent");
+  const [pageSize, setPageSize] = useState<number>(10);
+  const [sorting, setSorting] = useState<SortingState>([
+    { id: "lastInteraction", desc: true },
+  ]);
 
-  useEffect(() => {
-    const fetchContacts = async () => {
-      try {
-        const response = await fetch(
-          `http://localhost:3000/contacts?page=${currentPage}&pageSize=${pageSize}&search=${searchQuery}`
-        );
-        const data: ContactsResponse = await response.json();
-        setContacts(data.contacts);
-        setTotalPages(data.totalPages);
-        setTotalContacts(data.total);
-      } catch (error) {
-        console.error("Error fetching contacts:", error);
-      } finally {
-        setLoading(false);
-      }
-    };
-
-    // Check initial contacts loading status
-    fetch("http://localhost:3000/contacts-status")
-      .then((res) => res.json())
-      .then((data) => {
-        setIsAddingContacts(data.isAddingContacts);
-      })
-      .catch((error) => {
-        console.error("Error fetching contacts status:", error);
-      });
-
-    // Listen for contacts status updates
-    const unsubscribeContacts = socketService.onContactsStatus((data) => {
-      setIsAddingContacts(data.isAddingContacts);
-    });
-
-    fetchContacts();
-
-    return () => {
-      unsubscribeContacts();
-    };
-  }, [currentPage, pageSize, searchQuery, sortBy]);
-
-  // Reset to first page when changing page size or search term
-  useEffect(() => {
-    setCurrentPage(1);
-  }, [pageSize, searchQuery]);
-
-  // Sort contacts based on selected sort option
-  const sortedContacts = [...contacts].sort((a, b) => {
-    switch (sortBy) {
-      case "recent":
-        return (
-          new Date(b.lastInteraction).getTime() -
-          new Date(a.lastInteraction).getTime()
-        );
-      case "oldest":
-        return (
-          new Date(a.lastInteraction).getTime() -
-          new Date(b.lastInteraction).getTime()
-        );
-      case "name":
-        return a.name.localeCompare(b.name);
-      case "messages":
-        return b.messageCount - a.messageCount;
-      default:
-        return 0;
-    }
+  const { data, isLoading } = useContacts({
+    page: currentPage,
+    pageSize,
+    searchQuery,
+    sorting,
   });
 
+  const contacts = data?.contacts || [];
+  const totalPages = data?.totalPages || 1;
+  const totalContacts = data?.total || 0;
+
+  // Generate page numbers with ellipsis
+  const getPageNumbers = () => {
+    const pages = [];
+    const maxVisiblePages = 5;
+    const halfVisible = Math.floor(maxVisiblePages / 2);
+
+    if (totalPages <= maxVisiblePages) {
+      return Array.from({ length: totalPages }, (_, i) => i + 1);
+    }
+
+    if (currentPage <= halfVisible + 1) {
+      // Show first pages and last page
+      for (let i = 1; i <= maxVisiblePages - 1; i++) {
+        pages.push(i);
+      }
+      pages.push("...");
+      pages.push(totalPages);
+    } else if (currentPage >= totalPages - halfVisible) {
+      // Show first page and last pages
+      pages.push(1);
+      pages.push("...");
+      for (let i = totalPages - maxVisiblePages + 2; i <= totalPages; i++) {
+        pages.push(i);
+      }
+    } else {
+      // Show first page, current page range, and last page
+      pages.push(1);
+      pages.push("...");
+      for (
+        let i = currentPage - halfVisible + 1;
+        i <= currentPage + halfVisible - 1;
+        i++
+      ) {
+        pages.push(i);
+      }
+      pages.push("...");
+      pages.push(totalPages);
+    }
+
+    return pages;
+  };
+
   // Handle page changes
+  const goToPage = (page: number) => {
+    if (page >= 1 && page <= totalPages) {
+      setCurrentPage(page);
+    }
+  };
+
   const goToNextPage = () => {
     if (currentPage < totalPages) {
       setCurrentPage(currentPage + 1);
@@ -177,6 +146,7 @@ function Contacts() {
     }
   };
 
+  // Format date helper function
   const formatDate = (dateString: string) => {
     const date = new Date(dateString);
     return date.toLocaleDateString("en-US", {
@@ -186,27 +156,92 @@ function Contacts() {
     });
   };
 
-  // Get current sort option
-  const currentSortOption =
-    sortOptions.find((option) => option.value === sortBy) || sortOptions[0];
-
   // Handle page size change
   const handlePageSizeChange = (value: string) => {
-    setPageSize(
-      value === "All" ? sortedContacts.length : Number.parseInt(value)
-    );
+    setPageSize(Number.parseInt(value));
   };
 
-  const pageSizeOptions = [5, 10, 20, 50, "All"];
+  const pageSizeOptions = ["5", "10", "20", "50"];
 
-  const indexOfFirstContact =
-    (currentPage - 1) *
-    (typeof pageSize === "number" ? pageSize : totalContacts);
-  const indexOfLastContact = Math.min(
-    indexOfFirstContact +
-      (typeof pageSize === "number" ? pageSize : totalContacts),
-    totalContacts
-  );
+  // Define table columns
+  const columns: ColumnDef<Contact>[] = [
+    {
+      accessorKey: "image",
+      header: "",
+      cell: ({ row }: { row: Row<Contact> }) => {
+        const contact = row.original;
+        return (
+          <Avatar className="h-10 w-10 bg-green-100">
+            <AvatarImage src={contact.image} alt={contact.name} />
+            <AvatarFallback className="bg-green-100 text-green-700 font-medium">
+              {contact.name.charAt(0).toUpperCase()}
+            </AvatarFallback>
+          </Avatar>
+        );
+      },
+    },
+    {
+      accessorKey: "name",
+      header: "Name",
+    },
+    {
+      accessorKey: "phone",
+      header: "Phone",
+    },
+    {
+      accessorKey: "lastInteraction",
+      header: "Last Interaction",
+      cell: ({ row }: { row: Row<Contact> }) =>
+        formatDate(row.getValue("lastInteraction")),
+    },
+    {
+      accessorKey: "messageCount",
+      header: "Messages",
+      cell: ({ row }: { row: Row<Contact> }) => {
+        return (
+          <div className="flex items-center bg-green-50 px-2 py-1 rounded-full w-fit">
+            <MessageSquare className="h-3 w-3 text-green-600 mr-1" />
+            <span className="text-xs font-medium text-green-600">
+              {row.getValue("messageCount")}
+            </span>
+          </div>
+        );
+      },
+    },
+  ];
+
+  // Initialize the table
+  const table = useReactTable({
+    data: contacts,
+    columns,
+    getCoreRowModel: getCoreRowModel(),
+    manualPagination: true,
+    pageCount: totalPages,
+  });
+
+  // If loading, show a simple loading state
+  if (isLoading) {
+    return (
+      <main className="container mx-auto py-8">
+        <Card className="w-full max-w-4xl mx-auto">
+          <CardHeader>
+            <CardTitle>Your Contacts</CardTitle>
+            <CardDescription>
+              View and manage your WhatsApp contacts
+            </CardDescription>
+          </CardHeader>
+          <CardContent>
+            <div className="flex flex-col items-center justify-center h-64">
+              <Loader2 className="h-12 w-12 animate-spin text-primary mb-4" />
+              <p className="text-lg font-medium text-center">
+                Loading contacts...
+              </p>
+            </div>
+          </CardContent>
+        </Card>
+      </main>
+    );
+  }
 
   return (
     <main className="container mx-auto py-8">
@@ -218,15 +253,8 @@ function Contacts() {
           </CardDescription>
         </CardHeader>
         <CardContent>
-          {isAddingContacts && (
-            <div className="mb-4 bg-blue-50 p-4 rounded-md flex items-center text-blue-700">
-              <Loader2 className="h-4 w-4 animate-spin mr-2" />
-              <span>Syncing contacts from WhatsApp...</span>
-            </div>
-          )}
-
-          <div className="mb-6">
-            <div className="relative">
+          <div className="mb-6 flex gap-4">
+            <div className="relative flex-1">
               <Search className="absolute left-3 top-1/2 transform -translate-y-1/2 h-4 w-4 text-muted-foreground" />
               <Input
                 placeholder="Search contacts..."
@@ -235,6 +263,38 @@ function Contacts() {
                 onChange={(e) => setSearchQuery(e.target.value)}
               />
             </div>
+            <Select
+              value={sorting[0]?.id || "name"}
+              onValueChange={(value: string) => {
+                setSorting([{ id: value, desc: sorting[0]?.desc || false }]);
+              }}
+            >
+              <SelectTrigger className="w-[180px]">
+                <SelectValue placeholder="Sort by" />
+              </SelectTrigger>
+              <SelectContent>
+                <SelectItem value="name">Name</SelectItem>
+                <SelectItem value="lastInteraction">
+                  Last Interaction
+                </SelectItem>
+                <SelectItem value="messageCount">Message Count</SelectItem>
+              </SelectContent>
+            </Select>
+            <Button
+              variant="outline"
+              size="icon"
+              onClick={() => {
+                setSorting([
+                  { id: sorting[0]?.id || "name", desc: !sorting[0]?.desc },
+                ]);
+              }}
+            >
+              {sorting[0]?.desc ? (
+                <SortDesc className="h-4 w-4" />
+              ) : (
+                <SortAsc className="h-4 w-4" />
+              )}
+            </Button>
           </div>
 
           <div className="mb-4 flex items-center justify-between">
@@ -242,73 +302,61 @@ function Contacts() {
               <UserCheck className="inline-block mr-1 h-4 w-4" />
               {totalContacts} contacts synced
             </p>
-
-            <DropdownMenu>
-              <DropdownMenuTrigger asChild>
-                <Button
-                  variant="outline"
-                  size="sm"
-                  className="h-8 gap-1 bg-green-50 text-green-700 border-green-200 hover:bg-green-100"
-                >
-                  {currentSortOption.icon}
-                  {currentSortOption.label}
-                </Button>
-              </DropdownMenuTrigger>
-              <DropdownMenuContent align="end">
-                {sortOptions.map((option) => (
-                  <DropdownMenuItem
-                    key={option.value}
-                    onClick={() => setSortBy(option.value)}
-                    className="flex items-center cursor-pointer"
-                  >
-                    {option.icon}
-                    {option.label}
-                  </DropdownMenuItem>
-                ))}
-              </DropdownMenuContent>
-            </DropdownMenu>
           </div>
 
-          {loading ? (
-            <div className="flex justify-center items-center h-32">
-              <Loader2 className="h-8 w-8 animate-spin text-primary" />
-            </div>
-          ) : contacts.length === 0 ? (
+          {contacts.length === 0 ? (
             <div className="text-center py-8 text-muted-foreground">
               No contacts found
             </div>
           ) : (
             <>
-              <div className="space-y-3">
-                {sortedContacts.map((contact) => (
-                  <Card key={contact.id} className="overflow-hidden">
-                    <CardContent className="p-4">
-                      <div className="flex items-center">
-                        <Avatar className="h-10 w-10 mr-3 bg-green-100">
-                          <AvatarImage src={contact.image} alt={contact.name} />
-                          <AvatarFallback className="bg-green-100 text-green-700 font-medium">
-                            {contact.name.charAt(0).toUpperCase()}
-                          </AvatarFallback>
-                        </Avatar>
-                        <div className="flex-1">
-                          <h3 className="font-medium">{contact.name}</h3>
-                          <div className="flex items-center text-xs text-gray-500 mt-1">
-                            <Calendar className="h-3 w-3 mr-1" />
-                            <span>
-                              Last chat: {formatDate(contact.lastInteraction)}
-                            </span>
-                          </div>
-                        </div>
-                        <div className="flex items-center bg-green-50 px-2 py-1 rounded-full">
-                          <MessageSquare className="h-3 w-3 text-green-600 mr-1" />
-                          <span className="text-xs font-medium text-green-600">
-                            {contact.messageCount}
-                          </span>
-                        </div>
-                      </div>
-                    </CardContent>
-                  </Card>
-                ))}
+              <div className="rounded-md border">
+                <Table>
+                  <TableHeader>
+                    {table.getHeaderGroups().map((headerGroup) => (
+                      <TableRow key={headerGroup.id}>
+                        {headerGroup.headers.map((header) => (
+                          <TableHead key={header.id}>
+                            {header.isPlaceholder
+                              ? null
+                              : flexRender(
+                                  header.column.columnDef.header,
+                                  header.getContext()
+                                )}
+                          </TableHead>
+                        ))}
+                      </TableRow>
+                    ))}
+                  </TableHeader>
+                  <TableBody>
+                    {table.getRowModel().rows.length ? (
+                      table.getRowModel().rows.map((row) => (
+                        <TableRow
+                          key={row.id}
+                          data-state={row.getIsSelected() && "selected"}
+                        >
+                          {row.getVisibleCells().map((cell) => (
+                            <TableCell key={cell.id}>
+                              {flexRender(
+                                cell.column.columnDef.cell,
+                                cell.getContext()
+                              )}
+                            </TableCell>
+                          ))}
+                        </TableRow>
+                      ))
+                    ) : (
+                      <TableRow>
+                        <TableCell
+                          colSpan={columns.length}
+                          className="h-24 text-center"
+                        >
+                          No results.
+                        </TableCell>
+                      </TableRow>
+                    )}
+                  </TableBody>
+                </Table>
               </div>
 
               {/* Pagination and Page Size Controls */}
@@ -325,10 +373,7 @@ function Contacts() {
                       </SelectTrigger>
                       <SelectContent>
                         {pageSizeOptions.map((size) => (
-                          <SelectItem
-                            key={size.toString()}
-                            value={size.toString()}
-                          >
+                          <SelectItem key={size} value={size}>
                             {size}
                           </SelectItem>
                         ))}
@@ -337,9 +382,7 @@ function Contacts() {
                   </div>
 
                   <span className="text-sm text-muted-foreground">
-                    {indexOfFirstContact + 1}-
-                    {Math.min(indexOfLastContact, totalContacts)} of{" "}
-                    {totalContacts}
+                    Showing page {currentPage} of {totalPages}
                   </span>
                 </div>
 
@@ -355,9 +398,29 @@ function Contacts() {
                       <ChevronLeft className="h-4 w-4 mr-1" />
                       Previous
                     </Button>
-                    <span className="text-sm text-muted-foreground">
-                      Page {currentPage} of {totalPages}
-                    </span>
+
+                    <div className="flex items-center gap-1">
+                      {getPageNumbers().map((page, index) =>
+                        page === "..." ? (
+                          <span key={`ellipsis-${index}`} className="px-2">
+                            ...
+                          </span>
+                        ) : (
+                          <Button
+                            key={page}
+                            variant={
+                              currentPage === page ? "default" : "outline"
+                            }
+                            size="sm"
+                            onClick={() => goToPage(page as number)}
+                            className="h-8 w-8 p-0"
+                          >
+                            {page}
+                          </Button>
+                        )
+                      )}
+                    </div>
+
                     <Button
                       variant="outline"
                       size="sm"

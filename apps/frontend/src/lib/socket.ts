@@ -10,6 +10,7 @@ interface WhatsAppStatus {
 
 interface ContactsStatus {
   isAddingContacts: boolean;
+  isAddingMessages?: boolean;
 }
 
 class SocketService {

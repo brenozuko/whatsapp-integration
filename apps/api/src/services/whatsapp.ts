@@ -26,21 +26,68 @@ const saveContacts = async (client: Client) => {
     }
 
     const contacts = await client.getContacts();
+    const chats = await client.getChats();
+
+    // Create a map of phone numbers to chat objects for quick lookup
+    const chatMap = new Map();
+    for (const chat of chats) {
+      if (!chat.isGroup) {
+        chatMap.set(chat.id.user, chat);
+      }
+    }
 
     for (const contact of contacts) {
       if (contact.number) {
+        // Check if we have a chat with this contact
+        const chat = chatMap.get(contact.number);
+        let messageCount = 0;
+        let lastMessageDate = new Date();
+
+        // If chat exists, get message count without fetching all messages
+        if (chat) {
+          try {
+            // Get just one message to check if there are any
+            const messages = await chat.fetchMessages({ limit: 1 });
+            if (messages.length > 0) {
+              messageCount = chat.unreadCount || 0;
+              // Since chat exists, we need to get the actual count from the chat
+              const chatMessages = await prisma.message.count({
+                where: {
+                  from: { contains: contact.number },
+                  OR: [{ to: { contains: contact.number } }],
+                },
+              });
+              messageCount = Math.max(messageCount, chatMessages);
+
+              // Get last message timestamp
+              lastMessageDate = messages[0].timestamp
+                ? new Date(messages[0].timestamp * 1000)
+                : new Date();
+            }
+          } catch (err) {
+            console.error(
+              `Error getting message count for ${contact.number}:`,
+              err
+            );
+          }
+        }
+
         await prisma.contact.upsert({
           where: {
             phone: contact.number,
           },
           update: {
-            name: contact.name || contact.pushname,
+            name: contact.name || contact.pushname || "",
             profilePicture: await contact.getProfilePicUrl(),
+            messageCount,
+            lastMessageDate,
           },
           create: {
-            name: contact.name || contact.pushname,
+            name: contact.name || contact.pushname || "",
             phone: contact.number,
             profilePicture: await contact.getProfilePicUrl(),
+            messageCount,
+            lastMessageDate,
           },
         });
       }
@@ -72,14 +119,15 @@ const saveMessages = async (client: Client) => {
     console.log(`Found ${chats.length} chats to process`);
 
     let totalMessages = 0;
+    let totalChatsProcessed = 0;
     const processedContacts = new Set();
 
-    // Process each chat
+    // Process each chat - but only those with unread messages or no message history
     for (const chat of chats) {
       // Skip group chats
       if (chat.isGroup) continue;
 
-      // Try to find the contact based on the chat ID (which is a phone number with some formatting)
+      // Try to find the contact based on the chat ID
       const contactId = chat.id.user;
 
       // Find the contact in our database
@@ -94,10 +142,21 @@ const saveMessages = async (client: Client) => {
         continue;
       }
 
-      processedContacts.add(contact.id);
+      // Check if this contact needs message syncing
+      const hasExistingMessages = contact.messageCount > 0;
+      const hasUnreadMessages = chat.unreadCount > 0;
 
-      // Fetch messages for this chat
-      const messages = await chat.fetchMessages({ limit: 100 });
+      // Skip if we already have messages and nothing new
+      if (hasExistingMessages && !hasUnreadMessages) {
+        console.log(`Skipping chat ${chat.name} - no new messages`);
+        continue;
+      }
+
+      processedContacts.add(contact.id);
+      totalChatsProcessed++;
+
+      // Fetch messages for this chat - limit to recent ones for efficiency
+      const messages = await chat.fetchMessages({ limit: 50 });
       console.log(
         `Found ${messages.length} messages for contact ${contact.name}`
       );
@@ -115,21 +174,8 @@ const saveMessages = async (client: Client) => {
         });
 
         if (existingMessage) {
-          // Update existing message
-          await prisma.message.update({
-            where: {
-              id: existingMessage.id,
-            },
-            data: {
-              body: msg.body || "(Media message)",
-              from: msg.from,
-              to: msg.to,
-              fromMe: msg.fromMe,
-              timestamp: msg.timestamp
-                ? new Date(msg.timestamp * 1000)
-                : new Date(),
-            },
-          });
+          // Skip existing messages that don't need updates
+          continue;
         } else {
           // Create new message
           await prisma.message.create({
@@ -145,9 +191,8 @@ const saveMessages = async (client: Client) => {
                 : new Date(),
             },
           });
+          totalMessages++;
         }
-
-        totalMessages++;
       }
 
       // Update contact with message count and last message date
@@ -177,45 +222,9 @@ const saveMessages = async (client: Client) => {
       });
     }
 
-    // Process all contacts that have messages in the database
-    // but weren't updated in the loop above
-    const contactsWithMessages = await prisma.message.findMany({
-      distinct: ["contactId"],
-      select: {
-        contactId: true,
-      },
-    });
-
-    for (const { contactId } of contactsWithMessages) {
-      if (!processedContacts.has(contactId)) {
-        const messageCount = await prisma.message.count({
-          where: {
-            contactId,
-          },
-        });
-
-        const lastMessage = await prisma.message.findFirst({
-          where: {
-            contactId,
-          },
-          orderBy: {
-            timestamp: "desc",
-          },
-        });
-
-        await prisma.contact.update({
-          where: {
-            id: contactId,
-          },
-          data: {
-            messageCount,
-            lastMessageDate: lastMessage?.timestamp || new Date(),
-          },
-        });
-      }
-    }
-
-    console.log(`Successfully saved ${totalMessages} messages for user`);
+    console.log(
+      `Successfully saved ${totalMessages} new messages across ${totalChatsProcessed} chats`
+    );
   } catch (error) {
     console.error("Error saving messages:", error);
   } finally {
@@ -264,9 +273,20 @@ export const initializeWhatsApp = async () => {
 
       emitWhatsAppStatus(status);
 
+      // Process contacts and messages in sequence
       if (client) {
+        console.log("Starting contact synchronization...");
         await saveContacts(client);
-        await saveMessages(client);
+
+        // Only proceed with message sync if we have contacts
+        const contactCount = await prisma.contact.count();
+        if (contactCount > 0) {
+          console.log("Starting message synchronization...");
+          await saveMessages(client);
+        } else {
+          console.log("No contacts found, skipping message synchronization");
+        }
+        console.log("WhatsApp synchronization complete");
       }
     });
 
@@ -299,7 +319,7 @@ export const initializeWhatsApp = async () => {
     });
 
     client.on("message", async (msg) => {
-      if (!isConnected) return;
+      if (!isConnected || !client) return;
 
       try {
         // Find contact from the sender
@@ -313,10 +333,42 @@ export const initializeWhatsApp = async () => {
 
         if (!contact || !contact.id) {
           console.log(`Received message from unknown contact: ${phone}`);
+          // Try to add this as a new contact
+          try {
+            const remoteContact = await client.getContactById(msg.from);
+            if (remoteContact) {
+              const newContact = await prisma.contact.create({
+                data: {
+                  name: remoteContact.name || remoteContact.pushname || phone,
+                  phone,
+                  profilePicture: await remoteContact.getProfilePicUrl(),
+                  messageCount: 1,
+                  lastMessageDate: new Date(),
+                },
+              });
+
+              // Now create the message with the new contact
+              await prisma.message.create({
+                data: {
+                  messageId: msg.id._serialized,
+                  body: msg.body || "(Media message)",
+                  from: msg.from,
+                  to: msg.to,
+                  fromMe: msg.fromMe,
+                  contactId: newContact.id,
+                  timestamp: msg.timestamp
+                    ? new Date(msg.timestamp * 1000)
+                    : new Date(),
+                },
+              });
+            }
+          } catch (err) {
+            console.error(`Error creating contact for ${phone}:`, err);
+          }
           return;
         }
 
-        // Check if message already exists
+        // Check if message already exists - if so, skip
         const existingMessage = await prisma.message.findUnique({
           where: {
             messageId: msg.id._serialized,
@@ -324,51 +376,33 @@ export const initializeWhatsApp = async () => {
         });
 
         if (existingMessage) {
-          // Update existing message
-          await prisma.message.update({
-            where: {
-              id: existingMessage.id,
-            },
-            data: {
-              body: msg.body || "(Media message)",
-              from: msg.from,
-              to: msg.to,
-              fromMe: msg.fromMe,
-              timestamp: msg.timestamp
-                ? new Date(msg.timestamp * 1000)
-                : new Date(),
-            },
-          });
-        } else {
-          // Create new message
-          await prisma.message.create({
-            data: {
-              messageId: msg.id._serialized,
-              body: msg.body || "(Media message)",
-              from: msg.from,
-              to: msg.to,
-              fromMe: msg.fromMe,
-              contactId: contact.id,
-              timestamp: msg.timestamp
-                ? new Date(msg.timestamp * 1000)
-                : new Date(),
-            },
-          });
+          return; // Skip if we already have this message
         }
 
-        // Update contact message count
-        const messageCount = await prisma.message.count({
-          where: {
+        // Create new message
+        await prisma.message.create({
+          data: {
+            messageId: msg.id._serialized,
+            body: msg.body || "(Media message)",
+            from: msg.from,
+            to: msg.to,
+            fromMe: msg.fromMe,
             contactId: contact.id,
+            timestamp: msg.timestamp
+              ? new Date(msg.timestamp * 1000)
+              : new Date(),
           },
         });
 
+        // Update contact message count - use increment to avoid race conditions
         await prisma.contact.update({
           where: {
             id: contact.id,
           },
           data: {
-            messageCount,
+            messageCount: {
+              increment: 1,
+            },
             lastMessageDate: new Date(),
           },
         });
