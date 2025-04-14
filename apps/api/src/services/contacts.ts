@@ -1,5 +1,4 @@
-import { Contact, Prisma } from "@prisma/client";
-import { prisma } from "../lib/db";
+import { Contact, IContact } from "../models/Contact";
 
 interface GetContactsParams {
   page?: number;
@@ -8,7 +7,7 @@ interface GetContactsParams {
 }
 
 interface GetContactsResponse {
-  contacts: Contact[];
+  contacts: IContact[];
   total: number;
   page: number;
   pageSize: number;
@@ -22,25 +21,16 @@ export async function getContacts({
 }: GetContactsParams = {}): Promise<GetContactsResponse> {
   const skip = (page - 1) * pageSize;
 
-  const where: Prisma.ContactWhereInput = search
+  // Create query filter
+  const filter = search
     ? {
-        name: {
-          contains: search,
-          mode: Prisma.QueryMode.insensitive,
-        },
+        name: { $regex: search, $options: "i" },
       }
     : {};
 
   const [contacts, total] = await Promise.all([
-    prisma.contact.findMany({
-      where,
-      skip,
-      take: pageSize,
-      orderBy: {
-        name: "asc",
-      },
-    }),
-    prisma.contact.count({ where }),
+    Contact.find(filter).skip(skip).limit(pageSize).sort({ name: 1 }).exec(),
+    Contact.countDocuments(filter),
   ]);
 
   return {

@@ -9,7 +9,6 @@ export default defineConfig((options: Options) => ({
     options.alias = {
       "@": resolve(__dirname, "src"),
       "@lib": resolve(__dirname, "src/lib"),
-      "@prisma": resolve(__dirname, "prisma/generated"),
       "@lib/*": resolve(__dirname, "src/lib/*"),
     };
   },

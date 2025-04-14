@@ -1,6 +1,6 @@
 import { Client, RemoteAuth } from "whatsapp-web.js";
-import { prisma } from "../lib/db";
 import { getWhatsAppStore } from "../lib/whatsapp-store";
+import { Contact } from "../models/Contact";
 import { emitContactsStatus, emitWhatsAppStatus } from "./socket";
 
 let client: Client | null = null;
@@ -19,16 +19,14 @@ const saveContacts = async (client: Client) => {
     // Save each contact to the database
     for (const contact of contacts) {
       if (contact.number) {
-        await prisma.contact.upsert({
-          where: {
-            phone: contact.number,
-          },
-          update: { name: contact.name || contact.number },
-          create: {
+        await Contact.findOneAndUpdate(
+          { phone: contact.number },
+          {
             name: contact.name || contact.number,
             phone: contact.number,
           },
-        });
+          { upsert: true, new: true }
+        );
       }
     }
 

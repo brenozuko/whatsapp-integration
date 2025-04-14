@@ -46,9 +46,6 @@
       ],
       "@assets/*": [
         "src/assets/*"
-      ],
-      "@prisma/*": [
-        "prisma/generated/*"
       ]
     }
   },
