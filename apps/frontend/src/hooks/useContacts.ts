@@ -79,5 +79,7 @@ export const useContacts = ({
         searchQuery,
         sorting,
       }),
+    staleTime: 5000,
+    refetchOnWindowFocus: false,
   });
 };

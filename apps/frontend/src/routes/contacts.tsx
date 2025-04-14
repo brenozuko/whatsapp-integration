@@ -25,7 +25,8 @@ import {
 } from "@/components/ui/table";
 import { Contact, useContacts } from "@/hooks/useContacts";
 import { useDebounce } from "@/hooks/useDebounce";
-import { createFileRoute } from "@tanstack/react-router";
+import { useWhatsAppConnection } from "@/hooks/useWhatsAppConnection";
+import { createFileRoute, useNavigate } from "@tanstack/react-router";
 import {
   AccessorColumnDef,
   flexRender,
@@ -38,6 +39,7 @@ import {
   ChevronLeft,
   ChevronRight,
   Loader2,
+  LogOut,
   MessageSquare,
   Search,
   SortAsc,
@@ -50,6 +52,9 @@ export const Route = createFileRoute("/contacts")({
 });
 
 function Contacts() {
+  const { disconnect, isAddingContacts, syncProgress } =
+    useWhatsAppConnection();
+  const navigate = useNavigate();
   const [searchQuery, setSearchQuery] = useState("");
   const debouncedSearchQuery = useDebounce(searchQuery, 300);
   const [currentPage, setCurrentPage] = useState(1);
@@ -69,6 +74,10 @@ function Contacts() {
   const totalPages = data?.totalPages || 1;
   const totalContacts = data?.total || 0;
 
+  const handleDisconnect = () => {
+    disconnect();
+    navigate({ to: "/" });
+  };
   // Generate page numbers with ellipsis
   const getPageNumbers = () => {
     const pages = [];
@@ -187,23 +196,45 @@ function Contacts() {
     pageCount: totalPages,
   });
 
-  // If loading, show a simple loading state
-  if (isLoading) {
+  // If loading or syncing contacts, show a loading state
+  if (isLoading || isAddingContacts) {
     return (
       <main className="container mx-auto py-8">
         <Card className="w-full max-w-4xl mx-auto">
           <CardHeader>
             <CardTitle>Your Contacts</CardTitle>
             <CardDescription>
-              View and manage your WhatsApp contacts
+              {isAddingContacts
+                ? "Syncing your WhatsApp contacts..."
+                : "Loading contacts..."}
             </CardDescription>
           </CardHeader>
           <CardContent>
             <div className="flex flex-col items-center justify-center h-64">
               <Loader2 className="h-12 w-12 animate-spin text-primary mb-4" />
-              <p className="text-lg font-medium text-center">
-                Loading contacts...
-              </p>
+              {isAddingContacts && syncProgress ? (
+                <>
+                  <p className="text-lg font-medium text-center mb-2">
+                    Syncing {syncProgress.currentContact || "contacts"}...
+                  </p>
+                  <div className="w-full max-w-md bg-gray-200 rounded-full h-2.5 mb-2">
+                    <div
+                      className="bg-primary h-2.5 rounded-full transition-all duration-300"
+                      style={{
+                        width: `${(syncProgress.processed / syncProgress.total) * 100}%`,
+                      }}
+                    />
+                  </div>
+                  <p className="text-sm text-muted-foreground">
+                    {syncProgress.processed} of {syncProgress.total} contacts
+                    processed
+                  </p>
+                </>
+              ) : (
+                <p className="text-lg font-medium text-center">
+                  Loading contacts...
+                </p>
+              )}
             </div>
           </CardContent>
         </Card>
@@ -214,11 +245,22 @@ function Contacts() {
   return (
     <main className="container mx-auto py-8">
       <Card className="w-full max-w-4xl mx-auto">
-        <CardHeader>
-          <CardTitle>Your Contacts</CardTitle>
-          <CardDescription>
-            View and manage your WhatsApp contacts
-          </CardDescription>
+        <CardHeader className="flex flex-row items-center justify-between">
+          <div>
+            <CardTitle>Your Contacts</CardTitle>
+            <CardDescription>
+              View and manage your WhatsApp contacts
+            </CardDescription>
+          </div>
+          <Button
+            variant="destructive"
+            size="sm"
+            onClick={handleDisconnect}
+            className="flex items-center gap-2"
+          >
+            <LogOut className="h-4 w-4" />
+            Disconnect
+          </Button>
         </CardHeader>
         <CardContent>
           <div className="mb-6 flex gap-4">

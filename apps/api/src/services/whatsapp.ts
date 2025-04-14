@@ -6,82 +6,102 @@ import {
   WhatsAppStatus,
 } from "../lib/socket";
 
-// Store multiple clients and their states
-const clients = new Map<
-  string,
-  {
-    client: Client;
-    qrCode: string | null;
-    connectionState: "loading" | "ready" | "disconnected" | "error";
-    isAddingContacts: boolean;
-    isConnected: boolean;
+// Single client state
+let client: Client | null = null;
+let qrCode: string | null = null;
+let connectionState: "loading" | "ready" | "disconnected" | "error" =
+  "disconnected";
+let isAddingContacts = false;
+let isConnected = false;
+let contactsSyncProgress = {
+  total: 0,
+  processed: 0,
+  currentContact: null as string | null,
+};
+
+const saveContacts = async () => {
+  if (!client || !isConnected) {
+    console.error("No WhatsApp connection is active");
+    return;
   }
->();
 
-const saveContacts = async (client: Client, integrationId: string) => {
   try {
-    const clientState = clients.get(integrationId);
-    if (!clientState) return;
-
-    clientState.isAddingContacts = true;
-    emitContactsStatus({ isAddingContacts: true, integrationId });
-
-    if (!clientState.isConnected) {
-      console.error("No WhatsApp connection is active");
-      return;
-    }
+    isAddingContacts = true;
+    contactsSyncProgress = {
+      total: 0,
+      processed: 0,
+      currentContact: null,
+    };
+    emitContactsStatus({
+      isAddingContacts: true,
+      syncProgress: contactsSyncProgress,
+    });
 
     const contacts = await client.getContacts();
+    const contactData = [];
+
+    contactsSyncProgress.total = contacts.length;
+    emitContactsStatus({
+      isAddingContacts: true,
+      syncProgress: contactsSyncProgress,
+    });
 
     for (const contact of contacts) {
-      const chat = await contact?.getChat();
-      const messages = await chat?.fetchMessages({});
+      if (!contact.name && !contact.pushname) continue;
 
-      await prisma.contact.upsert({
-        where: {
-          phone_integrationId: {
-            phone: contact.number,
-            integrationId: integrationId,
-          },
-        },
-        update: {
-          name: contact.name || "",
-          profilePicture: await contact.getProfilePicUrl(),
-          messageCount: messages.length || 0,
-          lastMessageDate: messages[0].timestamp
-            ? new Date(messages[0].timestamp * 1000)
-            : new Date(),
-        },
-        create: {
-          name: contact.name || "",
-          phone: contact.number,
-          profilePicture: await contact.getProfilePicUrl(),
-          messageCount: messages.length || 0,
-          lastMessageDate: messages[0].timestamp
-            ? new Date(messages[0].timestamp * 1000)
-            : new Date(),
-          integrationId: integrationId,
-        },
+      contactsSyncProgress.currentContact =
+        contact.name || contact.pushname || contact.number;
+      contactsSyncProgress.processed++;
+      emitContactsStatus({
+        isAddingContacts: true,
+        syncProgress: contactsSyncProgress,
+      });
+
+      const chat = await contact?.getChat();
+      const messages = (await chat?.fetchMessages({})) || [];
+      const profilePicture = await contact.getProfilePicUrl();
+
+      contactData.push({
+        name: contact.name || contact.pushname,
+        phone: contact.number,
+        profilePicture,
+        messageCount: messages.length,
+        lastMessageDate: messages[0]?.timestamp
+          ? new Date(messages[0].timestamp * 1000)
+          : new Date(),
       });
     }
 
+    // Delete all existing contacts
+    await prisma.contact.deleteMany({});
+
+    // Create all contacts in bulk
+    await prisma.contact.createMany({
+      data: contactData,
+      skipDuplicates: true,
+    });
+
     console.log(
-      `Successfully saved contacts to the database for integration ${integrationId}`
+      `Successfully saved ${contactData.length} contacts to the database`
     );
   } catch (error) {
     console.error("Error saving contacts:", error);
   } finally {
-    const clientState = clients.get(integrationId);
-    if (clientState) {
-      clientState.isAddingContacts = false;
-      emitContactsStatus({ isAddingContacts: false, integrationId });
-    }
+    isAddingContacts = false;
+    contactsSyncProgress = {
+      total: 0,
+      processed: 0,
+      currentContact: null,
+    };
+    emitContactsStatus({
+      isAddingContacts: false,
+      syncProgress: contactsSyncProgress,
+    });
   }
 };
 
-const updateContactOnMessage = async (msg: Message, integrationId: string) => {
-  const clientState = clients.get(integrationId);
-  if (!clientState || !clientState.isConnected) return;
+const updateContactOnMessage = async (msg: Message) => {
+  if (!client || !isConnected) return;
 
   const contact = await msg.getContact();
   const chat = await contact.getChat();
@@ -89,184 +109,145 @@ const updateContactOnMessage = async (msg: Message, integrationId: string) => {
 
   await prisma.contact.update({
     where: {
-      phone_integrationId: {
-        phone: contact.number,
-        integrationId: integrationId,
-      },
+      phone: contact.number,
     },
     data: {
       messageCount: messages?.length || 0,
-      lastMessageDate: messages[0].timestamp
+      lastMessageDate: messages[0]?.timestamp
         ? new Date(messages[0].timestamp * 1000)
         : new Date(),
     },
   });
 };
 
-export const initializeWhatsApp = async (integrationId: string) => {
-  // Check if client already exists for this integration
-  if (clients.has(integrationId)) {
-    return clients.get(integrationId)?.client;
+export const initializeWhatsApp = async () => {
+  if (client) {
+    return client;
   }
 
   try {
-    const client = new Client({
+    client = new Client({
       puppeteer: {
         args: ["--no-sandbox"],
       },
     });
 
-    // Initialize client state
-    clients.set(integrationId, {
-      client,
-      qrCode: null,
-      connectionState: "loading",
-      isAddingContacts: false,
-      isConnected: false,
-    });
+    connectionState = "loading";
+    isConnected = false;
 
     client.on("qr", (qr) => {
-      const clientState = clients.get(integrationId);
-      if (clientState) {
-        clientState.qrCode = qr;
-        emitWhatsAppStatus({
-          qrCode: qr,
-          isConnected: false,
-          connectionState: clientState.connectionState,
-          integrationId,
-        });
-      }
+      qrCode = qr;
+      emitWhatsAppStatus({
+        qrCode,
+        isConnected: false,
+        connectionState,
+      });
     });
 
     client.on("ready", async () => {
-      console.log(`Client is ready for integration ${integrationId}!`);
-      const clientState = clients.get(integrationId);
-      if (clientState) {
-        clientState.connectionState = "ready";
-        clientState.qrCode = null;
-        clientState.isConnected = true;
+      console.log("Client is ready!");
+      connectionState = "ready";
+      qrCode = null;
+      isConnected = true;
 
-        const status: WhatsAppStatus = {
-          qrCode: null,
-          isConnected: true,
-          connectionState: clientState.connectionState,
-          integrationId,
-        };
+      const status: WhatsAppStatus = {
+        qrCode: null,
+        isConnected: true,
+        connectionState,
+      };
 
-        emitWhatsAppStatus(status);
-
-        // Process contacts and messages in sequence
-        await saveContacts(client, integrationId);
-      }
+      emitWhatsAppStatus(status);
+      await saveContacts();
     });
 
     client.on("disconnected", async () => {
-      console.log(`Client disconnected for integration ${integrationId}`);
-      const clientState = clients.get(integrationId);
-      if (clientState) {
-        clientState.connectionState = "disconnected";
-        clientState.isConnected = false;
+      console.log("Client disconnected");
+      connectionState = "disconnected";
+      isConnected = false;
+      client = null;
 
-        emitWhatsAppStatus({
-          qrCode: null,
-          isConnected: false,
-          connectionState: clientState.connectionState,
-          integrationId,
-        });
-      }
+      emitWhatsAppStatus({
+        qrCode: null,
+        isConnected: false,
+        connectionState,
+      });
     });
 
     client.on("auth_failure", async () => {
-      console.log(`Authentication failed for integration ${integrationId}`);
-      const clientState = clients.get(integrationId);
-      if (clientState) {
-        clientState.connectionState = "error";
-        clientState.isConnected = false;
+      console.log("Authentication failed");
+      connectionState = "error";
+      isConnected = false;
+      client = null;
 
-        emitWhatsAppStatus({
-          qrCode: null,
-          isConnected: false,
-          connectionState: clientState.connectionState,
-          integrationId,
-        });
-      }
+      emitWhatsAppStatus({
+        qrCode: null,
+        isConnected: false,
+        connectionState,
+      });
     });
 
-    // client.on("message", async (msg) => {
-    //   await updateContactOnMessage(msg, integrationId);
-    // });
+    client.on("message", async (msg) => {
+      await updateContactOnMessage(msg);
+    });
 
     client.initialize();
 
     return client;
   } catch (error) {
-    console.error(
-      `Error initializing WhatsApp client for integration ${integrationId}:`,
-      error
-    );
-    const clientState = clients.get(integrationId);
-    if (clientState) {
-      clientState.connectionState = "error";
-      emitWhatsAppStatus({
-        qrCode: null,
-        isConnected: false,
-        connectionState: clientState.connectionState,
-        integrationId,
-      });
-    }
+    console.error("Error initializing WhatsApp client:", error);
+    connectionState = "error";
+    emitWhatsAppStatus({
+      qrCode: null,
+      isConnected: false,
+      connectionState,
+    });
     throw error;
   }
 };
 
-export const getQrCode = (integrationId: string) => {
-  return clients.get(integrationId)?.qrCode || null;
+export const getQrCode = () => {
+  return qrCode;
 };
 
-export const getConnectionState = (integrationId: string) => {
-  return clients.get(integrationId)?.connectionState || "disconnected";
+export const getConnectionState = () => {
+  return connectionState;
 };
 
-export const getIsAddingContacts = (integrationId: string) => {
-  return clients.get(integrationId)?.isAddingContacts || false;
+export const getIsAddingContacts = () => {
+  return isAddingContacts;
 };
 
-export const getCurrentUser = (integrationId: string) => {
-  const clientState = clients.get(integrationId);
-  if (!clientState?.isConnected) return null;
+export const getCurrentUser = () => {
+  if (!isConnected) return null;
 
   return {
-    isConnected: clientState.isConnected,
+    isConnected,
   };
 };
 
-export const disconnectWhatsApp = async (integrationId: string) => {
+export const disconnectWhatsApp = async () => {
   try {
-    const clientState = clients.get(integrationId);
-    if (clientState) {
-      await clientState.client.destroy();
-      clients.delete(integrationId);
+    if (client) {
+      await client.destroy();
+      client = null;
+      isConnected = false;
+      connectionState = "disconnected";
 
-      // Delete all contacts for this integration from the database
-      await prisma.contact.deleteMany({
-        where: { integrationId },
-      });
+      // Delete all contacts from the database
+      await prisma.contact.deleteMany({});
 
       // Emit disconnected status
       emitWhatsAppStatus({
         qrCode: null,
         isConnected: false,
-        connectionState: "disconnected",
-        integrationId,
+        connectionState,
       });
 
       return true;
     }
     return false;
   } catch (error) {
-    console.error(
-      `Error disconnecting WhatsApp for integration ${integrationId}:`,
-      error
-    );
+    console.error("Error disconnecting WhatsApp:", error);
     return false;
   }
 };

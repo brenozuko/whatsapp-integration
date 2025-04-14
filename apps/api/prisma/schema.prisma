@@ -12,24 +12,12 @@ datasource db {
 }
 
 model Contact {
-    id              String      @id @default(uuid())
+    id              String    @id @default(uuid())
     name            String
-    phone           String
+    phone           String    @unique
     profilePicture  String?
-    messageCount    Int         @default(0)
+    messageCount    Int       @default(0)
     lastMessageDate DateTime?
-    createdAt       DateTime    @default(now())
-    updatedAt       DateTime    @updatedAt
-    integrationId   String      @map("integration_id")
-    integration     Integration @relation(fields: [integrationId], references: [id])
-
-    @@unique([phone, integrationId])
-    @@index([integrationId])
-}
-
-model Integration {
-    id        String    @id @default(uuid())
-    createdAt DateTime  @default(now())
-    updatedAt DateTime  @updatedAt
-    contacts  Contact[]
+    createdAt       DateTime  @default(now())
+    updatedAt       DateTime  @updatedAt
 }

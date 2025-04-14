@@ -10,7 +10,11 @@ interface WhatsAppStatus {
 
 interface ContactsStatus {
   isAddingContacts: boolean;
-  isAddingMessages?: boolean;
+  syncProgress?: {
+    total: number;
+    processed: number;
+    currentContact: string | null;
+  };
 }
 
 class SocketService {
@@ -67,7 +71,4 @@ class SocketService {
   }
 }
 
-// Create a singleton instance
-const socketService = new SocketService();
-
-export default socketService;
+export default new SocketService();

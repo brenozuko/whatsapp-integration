@@ -5,26 +5,21 @@ export interface GetContactsParams {
   page?: number;
   limit?: number;
   search?: string;
-  integrationId: string;
 }
 
 export const getContacts = async ({
   page = 1,
   limit = 10,
   search = "",
-  integrationId,
 }: GetContactsParams) => {
   const skip = (page - 1) * limit;
 
   const where = {
-    integration: {
-      id: integrationId,
-    },
     OR: search
       ? [
           { name: { contains: search, mode: Prisma.QueryMode.insensitive } },
           {
-            phoneNumber: {
+            phone: {
               contains: search,
               mode: Prisma.QueryMode.insensitive,
             },

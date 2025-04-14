@@ -7,6 +7,11 @@ interface WhatsAppStatus {
   isConnected: boolean;
   connectionState: "loading" | "ready" | "disconnected" | "error";
   isAddingContacts: boolean;
+  syncProgress?: {
+    total: number;
+    processed: number;
+    currentContact: string | null;
+  };
 }
 
 export const useWhatsAppConnection = () => {
@@ -23,13 +28,36 @@ export const useWhatsAppConnection = () => {
       const response = await fetch(
         `${import.meta.env.VITE_API_BASE_URL}/connect`
       );
-      const data = await response.json();
-      if (data.integrationId) {
-        localStorage.setItem("whatsappIntegrationId", data.integrationId);
-      }
-      return data;
+      return response.json();
     },
+    staleTime: 1000 * 60 * 5, // 5 minutes
+    refetchOnWindowFocus: false,
+    refetchOnMount: false,
+    refetchOnReconnect: false,
   });
+
+  const disconnect = async () => {
+    try {
+      const response = await fetch(
+        `${import.meta.env.VITE_API_BASE_URL}/disconnect`,
+        {
+          method: "POST",
+        }
+      );
+
+      if (!response.ok) {
+        throw new Error("Failed to disconnect");
+      }
+
+      setStatus((prev) => ({
+        ...prev,
+        isConnected: false,
+        connectionState: "disconnected",
+      }));
+    } catch (error) {
+      console.error("Error disconnecting:", error);
+    }
+  };
 
   useEffect(() => {
     if (connectionData) {
@@ -46,10 +74,6 @@ export const useWhatsAppConnection = () => {
     // Listen for contacts status updates
     const unsubscribeContacts = socketService.onContactsStatus((data) => {
       setStatus((prev) => ({ ...prev, ...data }));
-      if (data.isAddingContacts) {
-        // If contacts are being added, navigate to contacts page
-        window.location.href = "/contacts";
-      }
     });
 
     // Cleanup on unmount
@@ -59,5 +83,5 @@ export const useWhatsAppConnection = () => {
     };
   }, []);
 
-  return status;
+  return { ...status, disconnect };
 };

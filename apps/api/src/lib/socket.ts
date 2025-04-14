@@ -1,16 +1,32 @@
-import type { Server as HttpServer } from "http";
+import { createServer } from "http";
 import { Server } from "socket.io";
 
 let io: Server | null = null;
 
-export const initializeSocket = (server: HttpServer) => {
+export interface WhatsAppStatus {
+  qrCode: string | null;
+  isConnected: boolean;
+  connectionState: string;
+  userName?: string;
+  userPhone?: string;
+}
+
+export interface ContactsStatus {
+  isAddingContacts: boolean;
+  syncProgress?: {
+    total: number;
+    processed: number;
+    currentContact: string | null;
+  };
+}
+
+export const initializeSocket = (server: ReturnType<typeof createServer>) => {
   if (io) return io;
 
   io = new Server(server, {
     cors: {
-      origin: ["http://localhost:3000", "http://localhost:3001"],
+      origin: "*",
       methods: ["GET", "POST"],
-      credentials: true,
     },
   });
 
@@ -32,24 +48,10 @@ export const getSocketIO = () => {
   return io;
 };
 
-export interface WhatsAppStatus {
-  qrCode: string | null;
-  isConnected: boolean;
-  connectionState: string;
-  userName?: string;
-  userPhone?: string;
-  integrationId: string;
-}
-
 export const emitWhatsAppStatus = (data: WhatsAppStatus) => {
   if (!io) return;
   io.emit("whatsapp:status", data);
 };
-
-export interface ContactsStatus {
-  isAddingContacts: boolean;
-  integrationId: string;
-}
 
 export const emitContactsStatus = (data: ContactsStatus) => {
   if (!io) return;

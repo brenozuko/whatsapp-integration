@@ -3,12 +3,10 @@ import { z } from "zod";
 import { initializeSocket } from "./lib/socket";
 import { createServer } from "./server";
 import { getContacts } from "./services/contacts";
-import { createIntegration } from "./services/integration";
 import {
   disconnectWhatsApp,
   getConnectionState,
   getCurrentUser,
-  getIsAddingContacts,
   getQrCode,
   initializeWhatsApp,
 } from "./services/whatsapp";
@@ -22,14 +20,14 @@ initializeSocket(server);
 
 app.get("/connect", async (_, res) => {
   try {
-    const integration = await createIntegration();
-    const client = await initializeWhatsApp(integration.id);
+    const client = await initializeWhatsApp();
+    const isConnected = client?.info ? true : false;
+    const connectionState = getConnectionState();
 
     return res.json({
-      qrCode: getQrCode(integration.id),
-      isConnected: client?.info ? true : false,
-      connectionState: getConnectionState(integration.id),
-      integrationId: integration.id,
+      qrCode: getQrCode(),
+      isConnected,
+      connectionState,
     });
   } catch (error) {
     console.error("Error connecting to WhatsApp:", error);
@@ -37,30 +35,10 @@ app.get("/connect", async (_, res) => {
   }
 });
 
-app.get("/contacts-status", (req, res) => {
-  const { integrationId } = req.query;
-  if (!integrationId || typeof integrationId !== "string") {
-    return res.status(400).json({ error: "integrationId is required" });
-  }
-
-  return res.json({
-    isAddingContacts: getIsAddingContacts(integrationId),
-    integrationId,
-  });
-});
-
 app.get("/contacts", async (req, res) => {
   try {
     const validatedQuery = contactsQuerySchema.parse(req.query);
-
-    if (
-      !validatedQuery.integrationId ||
-      typeof validatedQuery.integrationId !== "string"
-    ) {
-      return res.status(400).json({ error: "integrationId is required" });
-    }
-
-    const currentUser = getCurrentUser(validatedQuery.integrationId);
+    const currentUser = getCurrentUser();
 
     if (!currentUser) {
       return res
@@ -68,8 +46,7 @@ app.get("/contacts", async (req, res) => {
         .json({ error: "No WhatsApp connection is currently active" });
     }
 
-    const result = await getContacts({ ...validatedQuery });
-
+    const result = await getContacts(validatedQuery);
     return res.json(result);
   } catch (error) {
     if (error instanceof z.ZodError) {
@@ -83,14 +60,9 @@ app.get("/contacts", async (req, res) => {
   }
 });
 
-app.post("/disconnect", async (req, res) => {
+app.post("/disconnect", async (_, res) => {
   try {
-    const { integrationId } = req.body;
-    if (!integrationId || typeof integrationId !== "string") {
-      return res.status(400).json({ error: "integrationId is required" });
-    }
-
-    const success = await disconnectWhatsApp(integrationId);
+    const success = await disconnectWhatsApp();
 
     if (!success) {
       return res
