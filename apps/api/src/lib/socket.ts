@@ -38,6 +38,7 @@ export interface WhatsAppStatus {
   connectionState: string;
   userName?: string;
   userPhone?: string;
+  integrationId: string;
 }
 
 export const emitWhatsAppStatus = (data: WhatsAppStatus) => {
@@ -47,7 +48,7 @@ export const emitWhatsAppStatus = (data: WhatsAppStatus) => {
 
 export interface ContactsStatus {
   isAddingContacts: boolean;
-  isAddingMessages?: boolean;
+  integrationId: string;
 }
 
 export const emitContactsStatus = (data: ContactsStatus) => {

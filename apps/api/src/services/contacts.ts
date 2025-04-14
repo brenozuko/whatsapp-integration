@@ -1,75 +1,52 @@
-import { Contact } from "@prisma/client";
+import { Prisma } from "@prisma/client";
 import { prisma } from "../lib/prisma";
 
-interface GetContactsParams {
+export interface GetContactsParams {
   page?: number;
-  pageSize?: number;
+  limit?: number;
   search?: string;
-  sortBy?: "name" | "createdAt" | "messageCount";
-  sortOrder?: "asc" | "desc";
+  integrationId: string;
 }
 
-interface GetContactsResponse {
-  contacts: Contact[];
-  total: number;
-  page: number;
-  pageSize: number;
-  totalPages: number;
-}
-
-export async function getContacts({
+export const getContacts = async ({
   page = 1,
-  pageSize = 10,
-  search,
-  sortBy = "name",
-  sortOrder = "asc",
-}: GetContactsParams = {}): Promise<GetContactsResponse> {
-  const skip = (page - 1) * pageSize;
+  limit = 10,
+  search = "",
+  integrationId,
+}: GetContactsParams) => {
+  const skip = (page - 1) * limit;
 
-  // Create query filter
   const where = {
-    ...(search && {
-      name: {
-        contains: search,
-        mode: "insensitive" as const,
-      },
-    }),
+    integration: {
+      id: integrationId,
+    },
+    OR: search
+      ? [
+          { name: { contains: search, mode: Prisma.QueryMode.insensitive } },
+          {
+            phoneNumber: {
+              contains: search,
+              mode: Prisma.QueryMode.insensitive,
+            },
+          },
+        ]
+      : undefined,
   };
 
   const [contacts, total] = await Promise.all([
     prisma.contact.findMany({
       where,
       skip,
-      take: pageSize,
-      orderBy:
-        sortBy === "messageCount"
-          ? {
-              messages: {
-                _count: sortOrder,
-              },
-            }
-          : {
-              [sortBy]: sortOrder,
-            },
-      include: {
-        _count: {
-          select: {
-            messages: true,
-          },
-        },
-      },
+      take: limit,
+      orderBy: { lastMessageDate: "desc" },
     }),
     prisma.contact.count({ where }),
   ]);
 
   return {
-    contacts: contacts.map((contact) => ({
-      ...contact,
-      name: contact.name || "",
-    })),
+    contacts,
     total,
     page,
-    pageSize,
-    totalPages: Math.ceil(total / pageSize),
+    totalPages: Math.ceil(total / limit),
   };
-}
+};

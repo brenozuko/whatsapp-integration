@@ -1,5 +1,5 @@
 import { S3Client } from "@aws-sdk/client-s3";
-import { Client, RemoteAuth } from "whatsapp-web.js";
+import { Client, Message, RemoteAuth } from "whatsapp-web.js";
 import { AwsS3Store } from "wwebjs-aws-s3";
 import { prisma } from "../lib/prisma";
 import {
@@ -24,238 +24,113 @@ const store = new AwsS3Store({
   s3Client: s3,
 });
 
-let client: Client | null = null;
-let qrCode: string | null = null;
-let connectionState: "loading" | "ready" | "disconnected" | "error" =
-  "disconnected";
-let isAddingContacts = false;
-let isAddingMessages = false;
+// Store multiple clients and their states
+const clients = new Map<
+  string,
+  {
+    client: Client;
+    qrCode: string | null;
+    connectionState: "loading" | "ready" | "disconnected" | "error";
+    isAddingContacts: boolean;
+    isConnected: boolean;
+  }
+>();
 
-let isConnected = false;
-
-const saveContacts = async (client: Client) => {
+const saveContacts = async (client: Client, integrationId: string) => {
   try {
-    isAddingContacts = true;
-    emitContactsStatus({ isAddingContacts: true });
+    const clientState = clients.get(integrationId);
+    if (!clientState) return;
 
-    if (!isConnected) {
+    clientState.isAddingContacts = true;
+    emitContactsStatus({ isAddingContacts: true, integrationId });
+
+    if (!clientState.isConnected) {
       console.error("No WhatsApp connection is active");
       return;
     }
 
     const contacts = await client.getContacts();
-    const chats = await client.getChats();
-
-    // Create a map of phone numbers to chat objects for quick lookup
-    const chatMap = new Map();
-    for (const chat of chats) {
-      if (!chat.isGroup) {
-        chatMap.set(chat.id.user, chat);
-      }
-    }
 
     for (const contact of contacts) {
-      if (contact.number) {
-        // Check if we have a chat with this contact
-        const chat = chatMap.get(contact.number);
-        let messageCount = 0;
-        let lastMessageDate = new Date();
+      const chat = await contact.getChat();
+      const messages = await chat.fetchMessages({});
 
-        // If chat exists, get message count without fetching all messages
-        if (chat) {
-          try {
-            // Get just one message to check if there are any
-            const messages = await chat.fetchMessages({ limit: 1 });
-            if (messages.length > 0) {
-              messageCount = chat.unreadCount || 0;
-              // Since chat exists, we need to get the actual count from the chat
-              const chatMessages = await prisma.message.count({
-                where: {
-                  from: { contains: contact.number },
-                  OR: [{ to: { contains: contact.number } }],
-                },
-              });
-              messageCount = Math.max(messageCount, chatMessages);
-
-              // Get last message timestamp
-              lastMessageDate = messages[0].timestamp
-                ? new Date(messages[0].timestamp * 1000)
-                : new Date();
-            }
-          } catch (err) {
-            console.error(
-              `Error getting message count for ${contact.number}:`,
-              err
-            );
-          }
-        }
-
-        await prisma.contact.upsert({
-          where: {
+      await prisma.contact.upsert({
+        where: {
+          phone_integrationId: {
             phone: contact.number,
+            integrationId: integrationId,
           },
-          update: {
-            name: contact.name || null,
-            profilePicture: await contact.getProfilePicUrl(),
-            messageCount,
-            lastMessageDate,
-          },
-          create: {
-            name: contact.name || null,
-            phone: contact.number,
-            profilePicture: await contact.getProfilePicUrl(),
-            messageCount,
-            lastMessageDate,
-          },
-        });
-      }
-    }
-
-    console.log(`Successfully saved contacts to the database for user`);
-  } catch (error) {
-    console.error("Error saving contacts:", error);
-  } finally {
-    isAddingContacts = false;
-    emitContactsStatus({ isAddingContacts: false });
-  }
-};
-
-const saveMessages = async (client: Client) => {
-  try {
-    isAddingMessages = true;
-    emitContactsStatus({ isAddingContacts: false, isAddingMessages: true });
-
-    if (!isConnected) {
-      console.error("No WhatsApp connection is active");
-      return;
-    }
-
-    // Get all chats
-    const chats = await client.getChats();
-    console.log(`Found ${chats.length} chats to process`);
-
-    let totalMessages = 0;
-    let totalChatsProcessed = 0;
-    const processedContacts = new Set();
-
-    // Process each chat - but only those with unread messages or no message history
-    for (const chat of chats) {
-      // Skip group chats
-      if (chat.isGroup) continue;
-
-      // Try to find the contact based on the chat ID
-      const contactId = chat.id.user;
-
-      // Find the contact in our database
-      const contact = await prisma.contact.findFirst({
-        where: {
-          phone: contactId,
         },
-      });
-
-      if (!contact || !contact.id) {
-        console.log(`No contact found for chat ${chat.name} (${contactId})`);
-        continue;
-      }
-
-      // Check if this contact needs message syncing
-      const hasExistingMessages = contact.messageCount > 0;
-      const hasUnreadMessages = chat.unreadCount > 0;
-
-      // Skip if we already have messages and nothing new
-      if (hasExistingMessages && !hasUnreadMessages) {
-        console.log(`Skipping chat ${chat.name} - no new messages`);
-        continue;
-      }
-
-      processedContacts.add(contact.id);
-      totalChatsProcessed++;
-
-      // Fetch messages for this chat - limit to recent ones for efficiency
-      const messages = await chat.fetchMessages({ limit: 50 });
-      console.log(
-        `Found ${messages.length} messages for contact ${contact.name}`
-      );
-
-      // Save messages to database
-      for (const msg of messages) {
-        // Skip if message is not valid (no body or ID)
-        if (!msg.id || (!msg.body && !msg.hasMedia)) continue;
-
-        // Check if message already exists
-        const existingMessage = await prisma.message.findUnique({
-          where: {
-            messageId: msg.id._serialized,
-          },
-        });
-
-        if (existingMessage) {
-          // Skip existing messages that don't need updates
-          continue;
-        } else {
-          // Create new message
-          await prisma.message.create({
-            data: {
-              messageId: msg.id._serialized,
-              body: msg.body || "(Media message)",
-              from: msg.from,
-              to: msg.to,
-              fromMe: msg.fromMe,
-              contactId: contact.id,
-              timestamp: msg.timestamp
-                ? new Date(msg.timestamp * 1000)
-                : new Date(),
-            },
-          });
-          totalMessages++;
-        }
-      }
-
-      // Update contact with message count and last message date
-      const messageCount = await prisma.message.count({
-        where: {
-          contactId: contact.id,
+        update: {
+          name: contact.name || "",
+          profilePicture: await contact.getProfilePicUrl(),
+          messageCount: messages.length,
+          lastMessageDate: messages[0].timestamp
+            ? new Date(messages[0].timestamp * 1000)
+            : new Date(),
         },
-      });
-
-      const lastMessage = await prisma.message.findFirst({
-        where: {
-          contactId: contact.id,
-        },
-        orderBy: {
-          timestamp: "desc",
-        },
-      });
-
-      await prisma.contact.update({
-        where: {
-          id: contact.id,
-        },
-        data: {
-          messageCount,
-          lastMessageDate: lastMessage?.timestamp || new Date(),
+        create: {
+          name: contact.name || "",
+          phone: contact.number,
+          profilePicture: await contact.getProfilePicUrl(),
+          messageCount: messages.length,
+          lastMessageDate: messages[0].timestamp
+            ? new Date(messages[0].timestamp * 1000)
+            : new Date(),
+          integrationId: integrationId,
         },
       });
     }
 
     console.log(
-      `Successfully saved ${totalMessages} new messages across ${totalChatsProcessed} chats`
+      `Successfully saved contacts to the database for integration ${integrationId}`
     );
   } catch (error) {
-    console.error("Error saving messages:", error);
+    console.error("Error saving contacts:", error);
   } finally {
-    isAddingMessages = false;
-    emitContactsStatus({ isAddingContacts: false, isAddingMessages: false });
+    const clientState = clients.get(integrationId);
+    if (clientState) {
+      clientState.isAddingContacts = false;
+      emitContactsStatus({ isAddingContacts: false, integrationId });
+    }
   }
 };
 
-export const initializeWhatsApp = async () => {
-  if (client) return client;
+const updateContactOnMessage = async (msg: Message, integrationId: string) => {
+  const clientState = clients.get(integrationId);
+  if (!clientState || !clientState.isConnected) return;
+
+  const contact = await msg.getContact();
+  const chat = await contact.getChat();
+  const messages = await chat.fetchMessages({});
+
+  await prisma.contact.update({
+    where: {
+      phone_integrationId: {
+        phone: contact.number,
+        integrationId: integrationId,
+      },
+    },
+    data: {
+      messageCount: messages.length,
+      lastMessageDate: messages[0].timestamp
+        ? new Date(messages[0].timestamp * 1000)
+        : new Date(),
+    },
+  });
+};
+
+export const initializeWhatsApp = async (integrationId: string) => {
+  // Check if client already exists for this integration
+  if (clients.has(integrationId)) {
+    return clients.get(integrationId)?.client;
+  }
 
   try {
-    client = new Client({
+    const client = new Client({
       authStrategy: new RemoteAuth({
-        clientId: "whatsapp-session",
+        clientId: integrationId,
         dataPath: "sessions",
         store: store,
         backupSyncIntervalMs: 600000, // 10 minutes
@@ -265,206 +140,160 @@ export const initializeWhatsApp = async () => {
       },
     });
 
+    // Initialize client state
+    clients.set(integrationId, {
+      client,
+      qrCode: null,
+      connectionState: "loading",
+      isAddingContacts: false,
+      isConnected: false,
+    });
+
     client.on("qr", (qr) => {
-      qrCode = qr;
-      emitWhatsAppStatus({
-        qrCode,
-        isConnected: false,
-        connectionState,
-      });
+      const clientState = clients.get(integrationId);
+      if (clientState) {
+        clientState.qrCode = qr;
+        emitWhatsAppStatus({
+          qrCode: qr,
+          isConnected: false,
+          connectionState: clientState.connectionState,
+          integrationId,
+        });
+      }
     });
 
     client.on("ready", async () => {
-      console.log("Client is ready!");
-      connectionState = "ready";
-      qrCode = null;
-      isConnected = true;
+      console.log(`Client is ready for integration ${integrationId}!`);
+      const clientState = clients.get(integrationId);
+      if (clientState) {
+        clientState.connectionState = "ready";
+        clientState.qrCode = null;
+        clientState.isConnected = true;
 
-      if (!client || !client.info) {
-        console.error("Client info not available");
-        return;
-      }
+        const status: WhatsAppStatus = {
+          qrCode: null,
+          isConnected: true,
+          connectionState: clientState.connectionState,
+          integrationId,
+        };
 
-      const status: WhatsAppStatus = {
-        qrCode: null,
-        isConnected: true,
-        connectionState,
-      };
+        emitWhatsAppStatus(status);
 
-      emitWhatsAppStatus(status);
-
-      // Process contacts and messages in sequence
-      if (client) {
-        console.log("Starting contact synchronization...");
-        await saveContacts(client);
-
-        // Only proceed with message sync if we have contacts
-        const contactCount = await prisma.contact.count();
-        if (contactCount > 0) {
-          console.log("Starting message synchronization...");
-          await saveMessages(client);
-        } else {
-          console.log("No contacts found, skipping message synchronization");
-        }
-        console.log("WhatsApp synchronization complete");
+        // Process contacts and messages in sequence
+        await saveContacts(client, integrationId);
       }
     });
 
     client.on("disconnected", async () => {
-      console.log("Client disconnected");
-      connectionState = "disconnected";
-      isConnected = false;
+      console.log(`Client disconnected for integration ${integrationId}`);
+      const clientState = clients.get(integrationId);
+      if (clientState) {
+        clientState.connectionState = "disconnected";
+        clientState.isConnected = false;
 
-      emitWhatsAppStatus({
-        qrCode: null,
-        isConnected: false,
-        connectionState,
-      });
+        emitWhatsAppStatus({
+          qrCode: null,
+          isConnected: false,
+          connectionState: clientState.connectionState,
+          integrationId,
+        });
+      }
     });
 
     client.on("auth_failure", async () => {
-      console.log("Authentication failed");
-      connectionState = "error";
-      isConnected = false;
+      console.log(`Authentication failed for integration ${integrationId}`);
+      const clientState = clients.get(integrationId);
+      if (clientState) {
+        clientState.connectionState = "error";
+        clientState.isConnected = false;
 
-      emitWhatsAppStatus({
-        qrCode: null,
-        isConnected: false,
-        connectionState,
-      });
-    });
-
-    client.on("change_state", (state) => {
-      console.log("Client state changed:", state);
+        emitWhatsAppStatus({
+          qrCode: null,
+          isConnected: false,
+          connectionState: clientState.connectionState,
+          integrationId,
+        });
+      }
     });
 
     client.on("message", async (msg) => {
-      if (!isConnected || !client) return;
-
-      try {
-        // Find contact from the sender
-        const phone = msg.from.split("@")[0];
-
-        const contact = await prisma.contact.findFirst({
-          where: {
-            phone,
-          },
-        });
-
-        if (!contact || !contact.id) {
-          console.log(`Received message from unknown contact: ${phone}`);
-          // Try to add this as a new contact
-          try {
-            const remoteContact = await client.getContactById(msg.from);
-            if (remoteContact) {
-              const newContact = await prisma.contact.create({
-                data: {
-                  name: remoteContact.name || remoteContact.pushname || phone,
-                  phone,
-                  profilePicture: await remoteContact.getProfilePicUrl(),
-                  messageCount: 1,
-                  lastMessageDate: new Date(),
-                },
-              });
-
-              // Now create the message with the new contact
-              await prisma.message.create({
-                data: {
-                  messageId: msg.id._serialized,
-                  body: msg.body || "(Media message)",
-                  from: msg.from,
-                  to: msg.to,
-                  fromMe: msg.fromMe,
-                  contactId: newContact.id,
-                  timestamp: msg.timestamp
-                    ? new Date(msg.timestamp * 1000)
-                    : new Date(),
-                },
-              });
-            }
-          } catch (err) {
-            console.error(`Error creating contact for ${phone}:`, err);
-          }
-          return;
-        }
-
-        // Check if message already exists - if so, skip
-        const existingMessage = await prisma.message.findUnique({
-          where: {
-            messageId: msg.id._serialized,
-          },
-        });
-
-        if (existingMessage) {
-          return; // Skip if we already have this message
-        }
-
-        // Create new message
-        await prisma.message.create({
-          data: {
-            messageId: msg.id._serialized,
-            body: msg.body || "(Media message)",
-            from: msg.from,
-            to: msg.to,
-            fromMe: msg.fromMe,
-            contactId: contact.id,
-            timestamp: msg.timestamp
-              ? new Date(msg.timestamp * 1000)
-              : new Date(),
-          },
-        });
-
-        // Update contact message count - use increment to avoid race conditions
-        await prisma.contact.update({
-          where: {
-            id: contact.id,
-          },
-          data: {
-            messageCount: {
-              increment: 1,
-            },
-            lastMessageDate: new Date(),
-          },
-        });
-      } catch (error) {
-        console.error("Error processing incoming message:", error);
-      }
+      await updateContactOnMessage(msg, integrationId);
     });
 
     client.initialize();
 
     return client;
   } catch (error) {
-    console.error("Error initializing WhatsApp client:", error);
-    connectionState = "error";
-    emitWhatsAppStatus({
-      qrCode: null,
-      isConnected: false,
-      connectionState,
-    });
+    console.error(
+      `Error initializing WhatsApp client for integration ${integrationId}:`,
+      error
+    );
+    const clientState = clients.get(integrationId);
+    if (clientState) {
+      clientState.connectionState = "error";
+      emitWhatsAppStatus({
+        qrCode: null,
+        isConnected: false,
+        connectionState: clientState.connectionState,
+        integrationId,
+      });
+    }
+    throw error;
   }
 };
 
-export const getQrCode = () => {
-  return qrCode;
+export const getQrCode = (integrationId: string) => {
+  return clients.get(integrationId)?.qrCode || null;
 };
 
-export const getConnectionState = () => {
-  return connectionState;
+export const getConnectionState = (integrationId: string) => {
+  return clients.get(integrationId)?.connectionState || "disconnected";
 };
 
-export const getIsAddingContacts = () => {
-  return isAddingContacts;
+export const getIsAddingContacts = (integrationId: string) => {
+  return clients.get(integrationId)?.isAddingContacts || false;
 };
 
-export const getIsAddingMessages = () => {
-  return isAddingMessages;
-};
-
-export const getCurrentUser = () => {
-  if (!isConnected) return null;
+export const getCurrentUser = (integrationId: string) => {
+  const clientState = clients.get(integrationId);
+  if (!clientState?.isConnected) return null;
 
   return {
-    isConnected,
+    isConnected: clientState.isConnected,
   };
+};
+
+export const disconnectWhatsApp = async (integrationId: string) => {
+  try {
+    const clientState = clients.get(integrationId);
+    if (clientState) {
+      await clientState.client.destroy();
+      clients.delete(integrationId);
+
+      // Delete all contacts for this integration from the database
+      await prisma.contact.deleteMany({
+        where: { integrationId },
+      });
+
+      // Delete session data from S3
+      await store.deleteSession(integrationId);
+
+      // Emit disconnected status
+      emitWhatsAppStatus({
+        qrCode: null,
+        isConnected: false,
+        connectionState: "disconnected",
+        integrationId,
+      });
+
+      return true;
+    }
+    return false;
+  } catch (error) {
+    console.error(
+      `Error disconnecting WhatsApp for integration ${integrationId}:`,
+      error
+    );
+    return false;
+  }
 };

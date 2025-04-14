@@ -12,27 +12,24 @@ datasource db {
 }
 
 model Contact {
-    id              String    @id @default(uuid())
+    id              String      @id @default(uuid())
     name            String
-    phone           String    @unique
+    phone           String
     profilePicture  String?
-    messageCount    Int       @default(0)
+    messageCount    Int         @default(0)
     lastMessageDate DateTime?
-    messages        Message[]
-    createdAt       DateTime  @default(now())
-    updatedAt       DateTime  @updatedAt
+    createdAt       DateTime    @default(now())
+    updatedAt       DateTime    @updatedAt
+    integrationId   String      @map("integration_id")
+    integration     Integration @relation(fields: [integrationId], references: [id])
+
+    @@unique([phone, integrationId])
+    @@index([integrationId])
 }
 
-model Message {
-    id        String   @id @default(uuid())
-    messageId String   @unique
-    body      String
-    from      String
-    to        String
-    fromMe    Boolean
-    contact   Contact  @relation(fields: [contactId], references: [id], onDelete: Cascade)
-    contactId String
-    timestamp DateTime
-    createdAt DateTime @default(now())
-    updatedAt DateTime @updatedAt
+model Integration {
+    id        String    @id @default(uuid())
+    createdAt DateTime  @default(now())
+    updatedAt DateTime  @updatedAt
+    contacts  Contact[]
 }

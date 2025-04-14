@@ -3,11 +3,12 @@ import { z } from "zod";
 import { initializeSocket } from "./lib/socket";
 import { createServer } from "./server";
 import { getContacts } from "./services/contacts";
+import { createIntegration } from "./services/integration";
 import {
+  disconnectWhatsApp,
   getConnectionState,
   getCurrentUser,
   getIsAddingContacts,
-  getIsAddingMessages,
   getQrCode,
   initializeWhatsApp,
 } from "./services/whatsapp";
@@ -17,23 +18,18 @@ const port = process.env.PORT || 3000;
 const app = createServer();
 const server = http.createServer(app);
 
-// Initialize Socket.IO
 initializeSocket(server);
 
-// Initialize WhatsApp client
-initializeWhatsApp().catch((err) => {
-  console.error("Failed to initialize WhatsApp:", err);
-});
-
-// Define routes before listening
 app.get("/connect", async (_, res) => {
   try {
-    const client = await initializeWhatsApp();
+    const integration = await createIntegration();
+    const client = await initializeWhatsApp(integration.id);
 
     return res.json({
-      qrCode: getQrCode(),
+      qrCode: getQrCode(integration.id),
       isConnected: client?.info ? true : false,
-      connectionState: getConnectionState(),
+      connectionState: getConnectionState(integration.id),
+      integrationId: integration.id,
     });
   } catch (error) {
     console.error("Error connecting to WhatsApp:", error);
@@ -41,39 +37,35 @@ app.get("/connect", async (_, res) => {
   }
 });
 
-app.get("/contacts-status", (_, res) => {
-  return res.json({
-    isAddingContacts: getIsAddingContacts(),
-    isAddingMessages: getIsAddingMessages(),
-  });
-});
-
-// Get the current integration information
-app.get("/integration", (_, res) => {
-  const currentUser = getCurrentUser();
-  if (!currentUser) {
-    return res
-      .status(404)
-      .json({ error: "No WhatsApp connection is currently active" });
+app.get("/contacts-status", (req, res) => {
+  const { integrationId } = req.query;
+  if (!integrationId || typeof integrationId !== "string") {
+    return res.status(400).json({ error: "integrationId is required" });
   }
-  return res.json(currentUser);
+
+  return res.json({
+    isAddingContacts: getIsAddingContacts(integrationId),
+    integrationId,
+  });
 });
 
 app.get("/contacts", async (req, res) => {
   try {
-    // Validate query parameters
     const validatedQuery = contactsQuerySchema.parse(req.query);
+    const { integrationId } = req.query;
 
-    // Check if WhatsApp is connected
-    const currentUser = getCurrentUser();
+    if (!integrationId || typeof integrationId !== "string") {
+      return res.status(400).json({ error: "integrationId is required" });
+    }
+
+    const currentUser = getCurrentUser(integrationId);
     if (!currentUser) {
       return res
         .status(401)
         .json({ error: "No WhatsApp connection is currently active" });
     }
 
-    // Pass validated query parameters
-    const result = await getContacts(validatedQuery);
+    const result = await getContacts({ ...validatedQuery, integrationId });
 
     return res.json(result);
   } catch (error) {
@@ -88,7 +80,30 @@ app.get("/contacts", async (req, res) => {
   }
 });
 
-// Start the server
+app.post("/disconnect", async (req, res) => {
+  try {
+    const { integrationId } = req.body;
+    if (!integrationId || typeof integrationId !== "string") {
+      return res.status(400).json({ error: "integrationId is required" });
+    }
+
+    const success = await disconnectWhatsApp(integrationId);
+
+    if (!success) {
+      return res
+        .status(500)
+        .json({ error: "Failed to disconnect WhatsApp session" });
+    }
+
+    return res.json({ message: "WhatsApp session disconnected successfully" });
+  } catch (error) {
+    console.error("Error disconnecting WhatsApp:", error);
+    return res
+      .status(500)
+      .json({ error: "Failed to disconnect WhatsApp session" });
+  }
+});
+
 server.listen(port, () => {
   console.log(`API server listening at http://localhost:${port}`);
 });
