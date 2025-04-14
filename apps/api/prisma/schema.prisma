@@ -15,6 +15,7 @@ model Contact {
     id              String    @id @default(uuid())
     name            String
     phone           String    @unique
+    profilePicture  String?
     messageCount    Int       @default(0)
     lastMessageDate DateTime?
     messages        Message[]

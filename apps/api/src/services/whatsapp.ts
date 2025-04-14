@@ -34,11 +34,13 @@ const saveContacts = async (client: Client) => {
             phone: contact.number,
           },
           update: {
-            name: contact.name || contact.number,
+            name: contact.name || contact.pushname,
+            profilePicture: await contact.getProfilePicUrl(),
           },
           create: {
-            name: contact.name || contact.number,
+            name: contact.name || contact.pushname,
             phone: contact.number,
+            profilePicture: await contact.getProfilePicUrl(),
           },
         });
       }
