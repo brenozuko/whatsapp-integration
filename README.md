@@ -1,39 +1,49 @@
-# Turborepo kitchen sink starter
+# WhatsApp Integration Project
 
-This Turborepo starter is maintained by the Turborepo core team.
+This is a monorepo project built with Turborepo and managed using pnpm.
 
-This example also shows how to use [Workspace Configurations](https://turbo.build/docs/core-concepts/monorepos/configuring-workspaces).
+## Prerequisites
 
-## Using this example
+- Node.js (>=18)
+- pnpm (>=8.15.6)
 
-Run the following command:
+## Getting Started
 
-```sh
-npx create-turbo@latest -e kitchen-sink
+1. Install pnpm globally (if you haven't already):
+
+```bash
+npm install -g pnpm
 ```
 
-## What's inside?
+2. Install dependencies:
 
-This Turborepo includes the following packages and apps:
+```bash
+pnpm install
+```
 
-### Apps and Packages
+3. Generate Prisma
 
-- `api`: an [Express](https://expressjs.com/) server
-- `storefront`: a [Next.js](https://nextjs.org/) app
-- `admin`: a [Vite](https://vitejs.dev/) single page app
-- `blog`: a [Remix](https://remix.run/) blog
-- `@repo/eslint-config`: ESLint configurations used throughout the monorepo
-- `@repo/jest-presets`: Jest configurations
-- `@repo/logger`: isomorphic logger (a small wrapper around console.log)
-- `@repo/typescript-config`: tsconfig.json's used throughout the monorepo
+## Project Structure
 
-Each package and app is 100% [TypeScript](https://www.typescriptlang.org/).
+This monorepo contains the following packages and applications:
 
-### Utilities
+- `apps/` - Contains all the applications
+- `packages/` - Contains shared packages and utilities
 
-This Turborepo has some additional tools already setup for you:
+## Development
 
-- [TypeScript](https://www.typescriptlang.org/) for static type checking
-- [ESLint](https://eslint.org/) for code linting
-- [Jest](https://jestjs.io) test runner for all things JavaScript
-- [Prettier](https://prettier.io) for code formatting
+To start the development server for all applications:
+
+```bash
+pnpm dev
+```
+
+This will start all applications in development mode with hot-reloading enabled.
+
+## Docker Support
+
+The project includes Docker configuration for containerized deployment. To start the services using Docker:
+
+```bash
+docker-compose up
+```

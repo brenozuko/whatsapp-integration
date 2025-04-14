@@ -32,7 +32,6 @@ import {
   flexRender,
   getCoreRowModel,
   Row,
-  SortingState,
   useReactTable,
 } from "@tanstack/react-table";
 import {
@@ -56,15 +55,11 @@ function Contacts() {
   const debouncedSearchQuery = useDebounce(searchQuery, 300);
   const [currentPage, setCurrentPage] = useState(1);
   const [pageSize, setPageSize] = useState<number>(10);
-  const [sorting, setSorting] = useState<SortingState>([
-    { id: "createdAt", desc: true },
-  ]);
 
   const { data, refetch } = useContacts({
     page: currentPage,
     pageSize,
     searchQuery: debouncedSearchQuery,
-    sorting,
   });
 
   const contacts = data?.contacts || [];

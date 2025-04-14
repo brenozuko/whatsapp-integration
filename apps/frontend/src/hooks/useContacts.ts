@@ -1,5 +1,4 @@
 import { useQuery } from "@tanstack/react-query";
-import { SortingState } from "@tanstack/react-table";
 
 export interface Contact {
   id: string;
@@ -25,7 +24,6 @@ const fetchContacts = async ({
   page: number;
   pageSize: number;
   searchQuery: string;
-  sorting: SortingState;
 }) => {
   const integrationId = localStorage.getItem("whatsappIntegrationId");
 
@@ -53,21 +51,18 @@ export const useContacts = ({
   page,
   pageSize,
   searchQuery,
-  sorting,
 }: {
   page: number;
   pageSize: number;
   searchQuery: string;
-  sorting: SortingState;
 }) => {
   return useQuery({
-    queryKey: ["contacts", page, pageSize, searchQuery, sorting],
+    queryKey: ["contacts", page, pageSize, searchQuery],
     queryFn: () =>
       fetchContacts({
         page,
         pageSize,
         searchQuery,
-        sorting,
       }),
   });
 };
