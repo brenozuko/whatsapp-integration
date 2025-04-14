@@ -7,6 +7,7 @@ import {
   CardHeader,
   CardTitle,
 } from "@/components/ui/card";
+import { cn } from "@/lib/utils";
 import { createFileRoute, Link } from "@tanstack/react-router";
 import {
   AlertCircle,
@@ -17,6 +18,60 @@ import {
 } from "lucide-react";
 import { useEffect, useState } from "react";
 import socketService from "../lib/socket";
+
+// Connection status component
+const ConnectionStatus = ({
+  status,
+}: {
+  status: "loading" | "ready" | "disconnected" | "error";
+}) => {
+  const statusConfig = {
+    loading: {
+      color: "bg-yellow-500",
+      text: "Awaiting Connection",
+      blink: true,
+      shadow: "shadow-yellow-500/50",
+      textColor: "text-yellow-500",
+    },
+    ready: {
+      color: "bg-green-500",
+      text: "Connected",
+      blink: false,
+      shadow: "shadow-green-500/50",
+      textColor: "text-green-500",
+    },
+    disconnected: {
+      color: "bg-gray-500",
+      text: "Disconnected",
+      blink: false,
+      shadow: "shadow-gray-500/50",
+      textColor: "text-gray-500",
+    },
+    error: {
+      color: "bg-red-500",
+      text: "Connection Error",
+      blink: false,
+      shadow: "shadow-red-500/50",
+      textColor: "text-red-500",
+    },
+  };
+
+  const config = statusConfig[status];
+
+  return (
+    <div className="flex items-center justify-center space-x-2 mb-4 p-2 rounded-md text-center">
+      <div
+        className={cn(
+          "w-4 h-4 rounded-full transition-opacity duration-500 shadow-md",
+          config.color,
+          config.shadow,
+          config.blink ? "animate-blink" : ""
+        )}
+      />
+      <span className={cn(config.textColor)}>{config.text}</span>
+    </div>
+  );
+};
 
 export const Route = createFileRoute("/")({
   component: Index,
@@ -31,7 +86,7 @@ function Index() {
   }>({
     qrCode: null,
     isConnected: false,
-    connectionState: "disconnected",
+    connectionState: "loading",
     isAddingContacts: false,
   });
 
@@ -67,6 +122,28 @@ function Index() {
     };
   }, []);
 
+  const renderQRCode = () => {
+    if (!status.qrCode) {
+      return (
+        <div className="w-64 h-64 border-2 border-gray-300 rounded-lg flex items-center justify-center bg-white">
+          <Loader2 className="h-8 w-8 animate-spin text-green-500" />
+        </div>
+      );
+    }
+
+    if (!status.isConnected && status.qrCode) {
+      return (
+        <div className="w-64 h-64 border-2 border-gray-300 rounded-lg flex items-center justify-center bg-white">
+          <img
+            src={`https://api.qrserver.com/v1/create-qr-code/?size=240x240&data=${encodeURIComponent(status.qrCode || "")}`}
+            alt="WhatsApp QR Code"
+            className="w-full h-full p-2"
+          />
+        </div>
+      );
+    }
+  };
+
   return (
     <main className="flex min-h-screen flex-col items-center justify-center p-4 bg-white">
       <Card className="w-full max-w-md shadow-lg">
@@ -96,23 +173,6 @@ function Index() {
                 manage your contacts.
               </AlertDescription>
             </Alert>
-          ) : status.connectionState === "loading" ? (
-            <Alert className="mb-4 bg-blue-50 border-blue-200">
-              <Loader2 className="h-4 w-4 animate-spin text-blue-500" />
-              <AlertTitle>Connecting...</AlertTitle>
-              <AlertDescription>
-                Please wait while we establish a connection to WhatsApp.
-              </AlertDescription>
-            </Alert>
-          ) : status.connectionState === "error" ? (
-            <Alert className="mb-4 bg-red-50 border-red-200">
-              <AlertCircle className="h-4 w-4 text-red-500" />
-              <AlertTitle>Connection Error</AlertTitle>
-              <AlertDescription>
-                An error occurred while connecting to WhatsApp. Please try
-                again.
-              </AlertDescription>
-            </Alert>
           ) : (
             <Alert className="mb-4">
               <AlertCircle className="h-4 w-4" />
@@ -124,31 +184,8 @@ function Index() {
           )}
 
           <div className="relative mb-6">
-            {!status.isConnected && (
-              <div className="w-64 h-64 border-2 border-gray-300 rounded-lg flex items-center justify-center bg-white">
-                {status.connectionState === "loading" || !status.qrCode ? (
-                  <div className="flex flex-col items-center space-y-2">
-                    <Loader2 className="h-8 w-8 animate-spin text-green-500" />
-                    <p className="text-sm text-gray-500">
-                      {status.connectionState === "loading"
-                        ? "Initializing WhatsApp..."
-                        : "Loading QR code..."}
-                    </p>
-                  </div>
-                ) : status.qrCode ? (
-                  <img
-                    src={`https://api.qrserver.com/v1/create-qr-code/?size=240x240&data=${encodeURIComponent(status.qrCode)}`}
-                    alt="WhatsApp QR Code"
-                    className="w-full h-full p-2"
-                  />
-                ) : (
-                  <div className="flex flex-col items-center space-y-2">
-                    <Loader2 className="h-8 w-8 animate-spin text-green-500" />
-                    <p className="text-sm text-gray-500">Loading QR code...</p>
-                  </div>
-                )}
-              </div>
-            )}
+            {renderQRCode()}
+            <ConnectionStatus status={status.connectionState} />
           </div>
 
           <div className="text-sm text-gray-600 space-y-4 w-full">
