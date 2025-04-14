@@ -14,7 +14,7 @@ export AWS_ENDPOINT_URL=http://localhost:4566
 
 # Create the S3 bucket
 echo "Creating S3 bucket..."
-aws --endpoint-url=http://localhost:4566 s3 mb s3://whatsapp-bucket
+aws --endpoint-url=http://localhost:4566 s3 mb s3://whatsapp-sessions
 
 # List buckets to verify creation
 echo "Listing buckets to verify creation:"

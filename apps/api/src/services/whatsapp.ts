@@ -1,10 +1,28 @@
-import { Client, LocalAuth } from "whatsapp-web.js";
+import { S3Client } from "@aws-sdk/client-s3";
+import { Client, RemoteAuth } from "whatsapp-web.js";
+import { AwsS3Store } from "wwebjs-aws-s3";
 import { prisma } from "../lib/prisma";
 import {
   emitContactsStatus,
   emitWhatsAppStatus,
   WhatsAppStatus,
 } from "../lib/socket";
+
+// Initialize S3 client
+const s3 = new S3Client({
+  region: process.env.AWS_REGION || "us-east-1",
+  credentials: {
+    accessKeyId: process.env.AWS_ACCESS_KEY_ID || "",
+    secretAccessKey: process.env.AWS_SECRET_ACCESS_KEY || "",
+  },
+});
+
+// Initialize S3 store
+const store = new AwsS3Store({
+  bucketName: process.env.AWS_S3_BUCKET_NAME || "whatsapp-sessions",
+  remoteDataPath: "sessions/",
+  s3Client: s3,
+});
 
 let client: Client | null = null;
 let qrCode: string | null = null;
@@ -14,13 +32,6 @@ let isAddingContacts = false;
 let isAddingMessages = false;
 
 let isConnected = false;
-
-const isPhoneNumber = (str: string): boolean => {
-  // Remove any non-digit characters
-  const digits = str.replace(/\D/g, "");
-  // Check if the string contains only digits and has a reasonable length for a phone number
-  return /^\d+$/.test(digits) && digits.length >= 8 && digits.length <= 15;
-};
 
 const saveContacts = async (client: Client) => {
   try {
@@ -45,17 +56,6 @@ const saveContacts = async (client: Client) => {
 
     for (const contact of contacts) {
       if (contact.number) {
-        // Skip contacts without a valid name or if pushname is a phone number
-        if (
-          !contact.name ||
-          (contact.pushname && isPhoneNumber(contact.pushname))
-        ) {
-          console.log(
-            `Skipping contact ${contact.number} - no valid name or pushname is a phone number`
-          );
-          continue;
-        }
-
         // Check if we have a chat with this contact
         const chat = chatMap.get(contact.number);
         let messageCount = 0;
@@ -95,13 +95,13 @@ const saveContacts = async (client: Client) => {
             phone: contact.number,
           },
           update: {
-            name: contact.name,
+            name: contact.name || null,
             profilePicture: await contact.getProfilePicUrl(),
             messageCount,
             lastMessageDate,
           },
           create: {
-            name: contact.name,
+            name: contact.name || null,
             phone: contact.number,
             profilePicture: await contact.getProfilePicUrl(),
             messageCount,
@@ -253,9 +253,13 @@ export const initializeWhatsApp = async () => {
   if (client) return client;
 
   try {
-    const auth = new LocalAuth();
     client = new Client({
-      authStrategy: auth,
+      authStrategy: new RemoteAuth({
+        clientId: "whatsapp-session",
+        dataPath: "sessions",
+        store: store,
+        backupSyncIntervalMs: 600000, // 10 minutes
+      }),
       puppeteer: {
         args: ["--no-sandbox"],
       },

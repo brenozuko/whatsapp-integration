@@ -63,7 +63,10 @@ export async function getContacts({
   ]);
 
   return {
-    contacts,
+    contacts: contacts.map((contact) => ({
+      ...contact,
+      name: contact.name || "",
+    })),
     total,
     page,
     pageSize,
