@@ -1,4 +1,3 @@
-import { log } from "@repo/logger";
 import { Client, RemoteAuth } from "whatsapp-web.js";
 import { prisma } from "../lib/db";
 import { getWhatsAppStore } from "../lib/whatsapp-store";
@@ -33,7 +32,9 @@ const saveContacts = async (client: Client) => {
       }
     }
 
-    log(`Successfully saved ${contacts.length} contacts to the database`);
+    console.log(
+      `Successfully saved ${contacts.length} contacts to the database`
+    );
   } catch (error) {
     console.error("Error saving contacts:", error);
   } finally {
@@ -69,7 +70,7 @@ export const initializeWhatsApp = async () => {
     });
 
     client.on("ready", async () => {
-      log("Client is ready!");
+      console.log("Client is ready!");
       connectionState = "ready";
       qrCode = null;
       emitWhatsAppStatus({
@@ -84,7 +85,7 @@ export const initializeWhatsApp = async () => {
     });
 
     client.on("disconnected", () => {
-      log("Client disconnected");
+      console.log("Client disconnected");
       connectionState = "disconnected";
       emitWhatsAppStatus({
         qrCode: null,
@@ -94,7 +95,7 @@ export const initializeWhatsApp = async () => {
     });
 
     client.on("auth_failure", () => {
-      log("Authentication failed");
+      console.log("Authentication failed");
       connectionState = "error";
       emitWhatsAppStatus({
         qrCode: null,
@@ -104,7 +105,7 @@ export const initializeWhatsApp = async () => {
     });
 
     client.on("change_state", (state) => {
-      log("Client state changed:", state);
+      console.log("Client state changed:", state);
     });
 
     client.initialize();

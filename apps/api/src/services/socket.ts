@@ -1,4 +1,3 @@
-import { log } from "@repo/logger";
 import type { Server as HttpServer } from "http";
 import { Server } from "socket.io";
 
@@ -16,10 +15,10 @@ export const initializeSocket = (server: HttpServer) => {
   });
 
   io.on("connection", (socket) => {
-    log("New client connected", socket.id);
+    console.log("New client connected", socket.id);
 
     socket.on("disconnect", () => {
-      log("Client disconnected", socket.id);
+      console.log("Client disconnected", socket.id);
     });
   });
 

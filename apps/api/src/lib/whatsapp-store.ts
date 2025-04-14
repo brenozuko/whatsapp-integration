@@ -1,7 +1,6 @@
-import { MongoClient } from "mongodb";
+import mongoose from "mongoose";
 import { MongoStore } from "wwebjs-mongo";
 
-let mongoClient: MongoClient | null = null;
 let store: typeof MongoStore | null = null;
 
 export const getWhatsAppStore = async (): Promise<typeof MongoStore> => {
@@ -13,10 +12,10 @@ export const getWhatsAppStore = async (): Promise<typeof MongoStore> => {
       process.env.DATABASE_URL ||
       "mongodb://mongodb:mongodb@localhost:27017/whatsapp?authSource=admin";
 
-    mongoClient = new MongoClient(uri);
-    await mongoClient.connect();
+    // Connect using mongoose instead of MongoClient
+    await mongoose.connect(uri);
 
-    store = new MongoStore(mongoClient.db());
+    store = new MongoStore({ mongoose: mongoose });
     console.log("Connected to MongoDB for WhatsApp session storage");
 
     return store;

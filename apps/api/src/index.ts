@@ -1,4 +1,3 @@
-import { log } from "@repo/logger";
 import http from "http";
 import { createServer } from "./server";
 import { getContacts } from "./services/contacts";
@@ -62,5 +61,5 @@ app.get("/whatsapp/contacts", async (req, res) => {
 });
 
 server.listen(port, () => {
-  log(`api running on ${port}`);
+  console.log(`api running on ${port}`);
 });
