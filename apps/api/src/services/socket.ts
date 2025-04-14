@@ -32,11 +32,15 @@ export const getSocketIO = () => {
   return io;
 };
 
-export const emitWhatsAppStatus = (data: {
+export interface WhatsAppStatus {
   qrCode: string | null;
   isConnected: boolean;
   connectionState: string;
-}) => {
+  userName?: string;
+  userPhone?: string;
+}
+
+export const emitWhatsAppStatus = (data: WhatsAppStatus) => {
   if (!io) return;
   io.emit("whatsapp:status", data);
 };

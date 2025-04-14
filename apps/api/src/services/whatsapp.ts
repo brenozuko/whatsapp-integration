@@ -1,29 +1,40 @@
 import { Client, RemoteAuth } from "whatsapp-web.js";
 import { getWhatsAppStore } from "../lib/whatsapp-store";
 import { Contact } from "../models/Contact";
-import { emitContactsStatus, emitWhatsAppStatus } from "./socket";
+import { IIntegration, Integration } from "../models/Integration";
+import {
+  emitContactsStatus,
+  emitWhatsAppStatus,
+  WhatsAppStatus,
+} from "./socket";
 
 let client: Client | null = null;
 let qrCode: string | null = null;
 let connectionState: "loading" | "ready" | "disconnected" | "error" =
   "disconnected";
 let isAddingContacts = false;
+let currentIntegration: IIntegration | null = null;
 
 const saveContacts = async (client: Client) => {
   try {
     isAddingContacts = true;
     emitContactsStatus({ isAddingContacts: true });
 
+    if (!currentIntegration) {
+      console.error("No integration is currently connected");
+      return;
+    }
+
     const contacts = await client.getContacts();
 
-    // Save each contact to the database
     for (const contact of contacts) {
       if (contact.number) {
         await Contact.findOneAndUpdate(
-          { phone: contact.number },
+          { phone: contact.number, integration: currentIntegration._id },
           {
             name: contact.name || contact.number,
             phone: contact.number,
+            integration: currentIntegration._id,
           },
           { upsert: true, new: true }
         );
@@ -31,7 +42,7 @@ const saveContacts = async (client: Client) => {
     }
 
     console.log(
-      `Successfully saved ${contacts.length} contacts to the database`
+      `Successfully saved ${contacts.length} contacts to the database for user ${currentIntegration.userName}`
     );
   } catch (error) {
     console.error("Error saving contacts:", error);
@@ -41,11 +52,13 @@ const saveContacts = async (client: Client) => {
   }
 };
 
-export const initializeWhatsApp = async () => {
+export const initializeWhatsApp = async (
+  userName?: string,
+  userPhone?: string
+) => {
   if (client) return client;
 
   try {
-    // Get MongoDB store for session persistence
     const store = await getWhatsAppStore();
 
     client = new Client({
@@ -71,20 +84,64 @@ export const initializeWhatsApp = async () => {
       console.log("Client is ready!");
       connectionState = "ready";
       qrCode = null;
-      emitWhatsAppStatus({
+
+      if (!client || !client.info) {
+        console.error("Client info not available");
+        return;
+      }
+
+      const clientInfo = client.info;
+
+      if (userName && userPhone) {
+        const integration = await Integration.findOneAndUpdate(
+          { userPhone },
+          {
+            userName,
+            userPhone,
+            whatsappId: clientInfo.wid._serialized,
+            isConnected: true,
+            lastConnection: new Date(),
+          },
+          { upsert: true, new: true }
+        );
+
+        if (integration) {
+          currentIntegration = integration;
+          console.log(
+            `User ${integration.userName} connected with WhatsApp ID: ${integration.whatsappId}`
+          );
+        }
+      }
+
+      const status: WhatsAppStatus = {
         qrCode: null,
         isConnected: true,
         connectionState,
-      });
+      };
 
-      if (client) {
+      if (currentIntegration) {
+        status.userName = currentIntegration.userName;
+        status.userPhone = currentIntegration.userPhone;
+      }
+
+      emitWhatsAppStatus(status);
+
+      if (client && currentIntegration) {
         await saveContacts(client);
       }
     });
 
-    client.on("disconnected", () => {
+    client.on("disconnected", async () => {
       console.log("Client disconnected");
       connectionState = "disconnected";
+
+      if (currentIntegration) {
+        await Integration.findByIdAndUpdate(currentIntegration._id, {
+          isConnected: false,
+        });
+        currentIntegration = null;
+      }
+
       emitWhatsAppStatus({
         qrCode: null,
         isConnected: false,
@@ -92,9 +149,17 @@ export const initializeWhatsApp = async () => {
       });
     });
 
-    client.on("auth_failure", () => {
+    client.on("auth_failure", async () => {
       console.log("Authentication failed");
       connectionState = "error";
+
+      if (currentIntegration) {
+        await Integration.findByIdAndUpdate(currentIntegration._id, {
+          isConnected: false,
+        });
+        currentIntegration = null;
+      }
+
       emitWhatsAppStatus({
         qrCode: null,
         isConnected: false,
@@ -130,4 +195,8 @@ export const getConnectionState = () => {
 
 export const getIsAddingContacts = () => {
   return isAddingContacts;
+};
+
+export const getCurrentIntegration = () => {
+  return currentIntegration;
 };
