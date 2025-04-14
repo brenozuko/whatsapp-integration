@@ -93,6 +93,9 @@ export const initializeWhatsApp = async (
       const clientInfo = client.info;
 
       if (userName && userPhone) {
+        // Check if an integration already exists for this phone number
+        const existingIntegration = await Integration.findOne({ userPhone });
+
         const integration = await Integration.findOneAndUpdate(
           { userPhone },
           {
@@ -107,9 +110,15 @@ export const initializeWhatsApp = async (
 
         if (integration) {
           currentIntegration = integration;
-          console.log(
-            `User ${integration.userName} connected with WhatsApp ID: ${integration.whatsappId}`
-          );
+          if (!existingIntegration) {
+            console.log(
+              `New user ${integration.userName} connected with WhatsApp ID: ${integration.whatsappId}`
+            );
+          } else {
+            console.log(
+              `Existing user ${integration.userName} reconnected with WhatsApp ID: ${integration.whatsappId}`
+            );
+          }
         }
       }
 

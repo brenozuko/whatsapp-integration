@@ -30,10 +30,14 @@ connectToDatabase()
     app.get("/whatsapp/connect", async (_, res) => {
       try {
         const client = await initializeWhatsApp();
+        const currentIntegration = getCurrentIntegration();
+
         return res.json({
           qrCode: getQrCode(),
           isConnected: client?.info ? true : false,
           connectionState: getConnectionState(),
+          userName: currentIntegration?.userName,
+          userPhone: currentIntegration?.userPhone,
         });
       } catch (error) {
         console.error("Error connecting to WhatsApp:", error);

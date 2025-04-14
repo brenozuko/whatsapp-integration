@@ -4,6 +4,8 @@ interface WhatsAppStatus {
   qrCode: string | null;
   isConnected: boolean;
   connectionState: "loading" | "ready" | "disconnected" | "error";
+  userName?: string;
+  userPhone?: string;
 }
 
 interface ContactsStatus {
