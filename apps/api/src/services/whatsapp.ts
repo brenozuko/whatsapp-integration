@@ -29,32 +29,18 @@ const saveContacts = async (client: Client) => {
 
     for (const contact of contacts) {
       if (contact.number) {
-        // Check if contact already exists
-        const existingContact = await prisma.contact.findUnique({
+        await prisma.contact.upsert({
           where: {
             phone: contact.number,
           },
+          update: {
+            name: contact.name || contact.number,
+          },
+          create: {
+            name: contact.name || contact.number,
+            phone: contact.number,
+          },
         });
-
-        if (existingContact) {
-          // Update existing contact
-          await prisma.contact.update({
-            where: {
-              id: existingContact.id,
-            },
-            data: {
-              name: contact.name || contact.number,
-            },
-          });
-        } else {
-          // Create new contact
-          await prisma.contact.create({
-            data: {
-              name: contact.name || contact.number,
-              phone: contact.number,
-            },
-          });
-        }
       }
     }
 
