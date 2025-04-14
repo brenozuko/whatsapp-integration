@@ -23,6 +23,15 @@ import {
   TableRow,
 } from "@/components/ui/table";
 import { createFileRoute } from "@tanstack/react-router";
+import {
+  createColumnHelper,
+  flexRender,
+  getCoreRowModel,
+  getFilteredRowModel,
+  getPaginationRowModel,
+  Row,
+  useReactTable,
+} from "@tanstack/react-table";
 import { Loader2, Search } from "lucide-react";
 import { useEffect, useState } from "react";
 import socketService from "../lib/socket";
@@ -31,6 +40,7 @@ interface Contact {
   id: string;
   name: string;
   phone: string;
+  image: string;
   lastInteraction: string;
   messageCount: number;
 }
@@ -41,32 +51,16 @@ export const Route = createFileRoute("/contacts")({
 
 function Contacts() {
   const [contacts, setContacts] = useState<Contact[]>([]);
-  const [filteredContacts, setFilteredContacts] = useState<Contact[]>([]);
   const [loading, setLoading] = useState(true);
   const [isAddingContacts, setIsAddingContacts] = useState(false);
   const [searchQuery, setSearchQuery] = useState("");
 
-  // Pagination state
-  const [currentPage, setCurrentPage] = useState(1);
-  const [totalPages, setTotalPages] = useState(1);
-  const [pageNumbers, setPageNumbers] = useState<number[]>([]);
-  const contactsPerPage = 10;
-  const [currentContacts, setCurrentContacts] = useState<Contact[]>([]);
-
   useEffect(() => {
     const fetchContacts = async () => {
       try {
-        const response = await fetch(
-          `http://localhost:3000/whatsapp/contacts?page=${currentPage}&limit=${contactsPerPage}`
-        );
+        const response = await fetch(`http://localhost:3000/whatsapp/contacts`);
         const data = await response.json();
         setContacts(data.contacts || data);
-        setFilteredContacts(data.contacts || data);
-        setTotalPages(
-          data.totalPages ||
-            Math.ceil((data.contacts || data).length / contactsPerPage)
-        );
-        setCurrentContacts(data.contacts || data.slice(0, contactsPerPage));
       } catch (error) {
         console.error("Error fetching contacts:", error);
       } finally {
@@ -94,44 +88,74 @@ function Contacts() {
     return () => {
       unsubscribeContacts();
     };
-  }, [currentPage]);
+  }, []);
 
-  // Calculate pagination numbers
-  useEffect(() => {
-    // Generate page numbers to display
-    const numbers = [];
-    for (let i = 1; i <= totalPages; i++) {
-      numbers.push(i);
-    }
-    setPageNumbers(numbers);
-  }, [totalPages]);
+  const columnHelper = createColumnHelper<Contact>();
 
-  // Filter contacts based on search query
-  useEffect(() => {
-    if (searchQuery.trim() === "") {
-      setFilteredContacts(contacts);
-    } else {
-      const lowerCaseQuery = searchQuery.toLowerCase();
-      const filtered = contacts.filter(
-        (contact) =>
-          contact.name.toLowerCase().includes(lowerCaseQuery) ||
-          contact.phone.toLowerCase().includes(lowerCaseQuery)
-      );
-      setFilteredContacts(filtered);
-    }
-    // Reset to first page when search query changes
-    setCurrentPage(1);
-  }, [searchQuery, contacts]);
+  const columns = [
+    columnHelper.accessor("image", {
+      header: "",
+      cell: ({ row }: { row: Row<Contact> }) => {
+        const contact = row.original;
+        const initial = contact.name
+          ? contact.name.charAt(0).toUpperCase()
+          : "?";
 
-  // Update current contacts when filtered contacts change
-  useEffect(() => {
-    const indexOfLastContact = currentPage * contactsPerPage;
-    const indexOfFirstContact = indexOfLastContact - contactsPerPage;
-    setCurrentContacts(
-      filteredContacts.slice(indexOfFirstContact, indexOfLastContact)
-    );
-    setTotalPages(Math.ceil(filteredContacts.length / contactsPerPage));
-  }, [filteredContacts, currentPage]);
+        return (
+          <div className="flex items-center justify-center w-10 h-10 rounded-full overflow-hidden bg-primary/10 text-primary font-medium">
+            {contact.image ? (
+              <img
+                src={contact.image}
+                alt={contact.name}
+                className="w-full h-full object-cover"
+                onError={(e) => {
+                  e.currentTarget.style.display = "none";
+                  e.currentTarget.parentElement!.innerText = initial;
+                }}
+              />
+            ) : (
+              initial
+            )}
+          </div>
+        );
+      },
+    }),
+    columnHelper.accessor("name", {
+      header: "Name",
+      cell: ({ row }: { row: Row<Contact> }) => (
+        <div className="font-medium">{row.getValue("name")}</div>
+      ),
+    }),
+    columnHelper.accessor("phone", {
+      header: "Phone",
+    }),
+    columnHelper.accessor("lastInteraction", {
+      header: "Last Interaction",
+    }),
+    columnHelper.accessor("messageCount", {
+      header: "Messages",
+      cell: ({ row }: { row: Row<Contact> }) => (
+        <div className="text-right">{row.getValue("messageCount")}</div>
+      ),
+    }),
+  ];
+
+  const table = useReactTable({
+    data: contacts,
+    columns,
+    getCoreRowModel: getCoreRowModel(),
+    getPaginationRowModel: getPaginationRowModel(),
+    getFilteredRowModel: getFilteredRowModel(),
+    state: {
+      globalFilter: searchQuery,
+    },
+    onGlobalFilterChange: setSearchQuery,
+    initialState: {
+      pagination: {
+        pageSize: 10,
+      },
+    },
+  });
 
   return (
     <main className="container mx-auto py-8">
@@ -164,7 +188,7 @@ function Contacts() {
             <div className="flex justify-center items-center h-32">
               <Loader2 className="h-8 w-8 animate-spin text-primary" />
             </div>
-          ) : filteredContacts.length === 0 ? (
+          ) : contacts.length === 0 ? (
             <div className="text-center py-8 text-muted-foreground">
               No contacts found
             </div>
@@ -173,74 +197,91 @@ function Contacts() {
               <div className="rounded-md border">
                 <Table>
                   <TableHeader>
-                    <TableRow>
-                      <TableHead>Name</TableHead>
-                      <TableHead>Phone</TableHead>
-                      <TableHead>Last Interaction</TableHead>
-                      <TableHead className="text-right">Messages</TableHead>
-                    </TableRow>
-                  </TableHeader>
-                  <TableBody>
-                    {currentContacts.map((contact) => (
-                      <TableRow key={contact.id}>
-                        <TableCell className="font-medium">
-                          {contact.name}
-                        </TableCell>
-                        <TableCell>{contact.phone}</TableCell>
-                        <TableCell>{contact.lastInteraction}</TableCell>
-                        <TableCell className="text-right">
-                          {contact.messageCount}
-                        </TableCell>
+                    {table.getHeaderGroups().map((headerGroup) => (
+                      <TableRow key={headerGroup.id}>
+                        {headerGroup.headers.map((header) => (
+                          <TableHead key={header.id}>
+                            {header.isPlaceholder
+                              ? null
+                              : flexRender(
+                                  header.column.columnDef.header,
+                                  header.getContext()
+                                )}
+                          </TableHead>
+                        ))}
                       </TableRow>
                     ))}
+                  </TableHeader>
+                  <TableBody>
+                    {table.getRowModel().rows?.length ? (
+                      table.getRowModel().rows.map((row) => (
+                        <TableRow
+                          key={row.id}
+                          data-state={row.getIsSelected() && "selected"}
+                        >
+                          {row.getVisibleCells().map((cell) => (
+                            <TableCell key={cell.id}>
+                              {flexRender(
+                                cell.column.columnDef.cell,
+                                cell.getContext()
+                              )}
+                            </TableCell>
+                          ))}
+                        </TableRow>
+                      ))
+                    ) : (
+                      <TableRow>
+                        <TableCell
+                          colSpan={columns.length}
+                          className="h-24 text-center"
+                        >
+                          No results.
+                        </TableCell>
+                      </TableRow>
+                    )}
                   </TableBody>
                 </Table>
               </div>
 
-              {totalPages > 1 && (
-                <Pagination className="mt-4">
-                  <PaginationContent>
-                    <PaginationItem>
-                      <PaginationPrevious
-                        onClick={() =>
-                          setCurrentPage((prev) => Math.max(prev - 1, 1))
+              <Pagination className="mt-4">
+                <PaginationContent>
+                  <PaginationItem>
+                    <PaginationPrevious
+                      onClick={() => table.previousPage()}
+                      className={
+                        !table.getCanPreviousPage()
+                          ? "pointer-events-none opacity-50"
+                          : "cursor-pointer"
+                      }
+                    />
+                  </PaginationItem>
+                  {Array.from(
+                    { length: table.getPageCount() },
+                    (_, i) => i + 1
+                  ).map((page) => (
+                    <PaginationItem key={page}>
+                      <PaginationLink
+                        onClick={() => table.setPageIndex(page - 1)}
+                        isActive={
+                          table.getState().pagination.pageIndex === page - 1
                         }
-                        className={
-                          currentPage === 1
-                            ? "pointer-events-none opacity-50"
-                            : "cursor-pointer"
-                        }
-                      />
+                      >
+                        {page}
+                      </PaginationLink>
                     </PaginationItem>
-
-                    {pageNumbers.map((number) => (
-                      <PaginationItem key={number}>
-                        <PaginationLink
-                          onClick={() => setCurrentPage(number)}
-                          isActive={currentPage === number}
-                        >
-                          {number}
-                        </PaginationLink>
-                      </PaginationItem>
-                    ))}
-
-                    <PaginationItem>
-                      <PaginationNext
-                        onClick={() =>
-                          setCurrentPage((prev) =>
-                            Math.min(prev + 1, totalPages)
-                          )
-                        }
-                        className={
-                          currentPage === totalPages
-                            ? "pointer-events-none opacity-50"
-                            : "cursor-pointer"
-                        }
-                      />
-                    </PaginationItem>
-                  </PaginationContent>
-                </Pagination>
-              )}
+                  ))}
+                  <PaginationItem>
+                    <PaginationNext
+                      onClick={() => table.nextPage()}
+                      className={
+                        !table.getCanNextPage()
+                          ? "pointer-events-none opacity-50"
+                          : "cursor-pointer"
+                      }
+                    />
+                  </PaginationItem>
+                </PaginationContent>
+              </Pagination>
             </>
           )}
         </CardContent>
