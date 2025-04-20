@@ -6,6 +6,7 @@
     ],
     "outDir": "./dist",
     "baseUrl": ".",
+    "esModuleInterop": true,
     "paths": {
       "@lib/*": [
         "../../lib/*"
