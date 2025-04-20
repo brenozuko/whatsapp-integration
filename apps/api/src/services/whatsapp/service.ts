@@ -1,10 +1,10 @@
 import { Client, Message } from "whatsapp-web.js";
-import { prisma } from "../lib/prisma";
+import { prisma } from "../../lib/prisma";
 import {
   emitContactsStatus,
   emitWhatsAppStatus,
   WhatsAppStatus,
-} from "../lib/socket";
+} from "../../server/socket";
 
 let client: Client | null = null;
 let qrCode: string | null = null;

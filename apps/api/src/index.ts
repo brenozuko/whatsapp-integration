@@ -1,7 +1,7 @@
 import * as http from "http";
-import { initializeSocket } from "./lib/socket";
 import whatsappRoutes from "./routes/whatsapp.routes";
-import { createServer } from "./server";
+import { createServer } from "./server/server";
+import { initializeSocket } from "./server/socket";
 
 const port = process.env.PORT || 3000;
 const app = createServer();

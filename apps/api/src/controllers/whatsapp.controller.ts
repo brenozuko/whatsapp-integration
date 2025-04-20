@@ -7,7 +7,7 @@ import {
   getCurrentUser,
   getQrCode,
   initializeWhatsApp,
-} from "../services/whatsapp";
+} from "../services/whatsapp/service";
 import { contactsQuerySchema } from "../validations";
 
 export const connectWhatsApp = async (_: Request, res: Response) => {
